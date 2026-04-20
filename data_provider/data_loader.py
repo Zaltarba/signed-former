@@ -13,7 +13,7 @@ warnings.filterwarnings('ignore')
 class Dataset_ETT_hour(Dataset):
     def __init__(self, root_path, flag='train', size=None,
                  features='S', data_path='ETTh1.csv',
-                 target='OT', scale=True, timeenc=0, freq='h'):
+                 target='OT', scale=True, timeenc=0, freq='h', keep_ratio=1.0):
         # size [seq_len, label_len, pred_len]
         # info
         if size == None:
@@ -35,6 +35,7 @@ class Dataset_ETT_hour(Dataset):
         self.timeenc = timeenc
         self.freq = freq
 
+        self.keep_ratio = keep_ratio
         self.root_path = root_path
         self.data_path = data_path
         self.__read_data__()
@@ -52,6 +53,9 @@ class Dataset_ETT_hour(Dataset):
         if self.features == 'M' or self.features == 'MS':
             cols_data = df_raw.columns[1:]
             df_data = df_raw[cols_data]
+            if self.keep_ratio < 1.0:
+                n_keep = max(1, int(df_data.shape[1] * self.keep_ratio))
+                df_data = df_data.iloc[:, :n_keep]
         elif self.features == 'S':
             df_data = df_raw[[self.target]]
 
@@ -101,7 +105,7 @@ class Dataset_ETT_hour(Dataset):
 class Dataset_ETT_minute(Dataset):
     def __init__(self, root_path, flag='train', size=None,
                  features='S', data_path='ETTm1.csv',
-                 target='OT', scale=True, timeenc=0, freq='t'):
+                 target='OT', scale=True, timeenc=0, freq='t', keep_ratio=1.0):
         # size [seq_len, label_len, pred_len]
         # info
         if size == None:
@@ -123,6 +127,7 @@ class Dataset_ETT_minute(Dataset):
         self.timeenc = timeenc
         self.freq = freq
 
+        self.keep_ratio = keep_ratio
         self.root_path = root_path
         self.data_path = data_path
         self.__read_data__()
@@ -140,6 +145,9 @@ class Dataset_ETT_minute(Dataset):
         if self.features == 'M' or self.features == 'MS':
             cols_data = df_raw.columns[1:]
             df_data = df_raw[cols_data]
+            if self.keep_ratio < 1.0:
+                n_keep = max(1, int(df_data.shape[1] * self.keep_ratio))
+                df_data = df_data.iloc[:, :n_keep]
         elif self.features == 'S':
             df_data = df_raw[[self.target]]
 
@@ -191,7 +199,7 @@ class Dataset_ETT_minute(Dataset):
 class Dataset_Custom(Dataset):
     def __init__(self, root_path, flag='train', size=None,
                  features='S', data_path='ETTh1.csv',
-                 target='OT', scale=True, timeenc=0, freq='h'):
+                 target='OT', scale=True, timeenc=0, freq='h', keep_ratio=1.0):
         # size [seq_len, label_len, pred_len]
         # info
         if size == None:
@@ -213,6 +221,7 @@ class Dataset_Custom(Dataset):
         self.timeenc = timeenc
         self.freq = freq
 
+        self.keep_ratio = keep_ratio
         self.root_path = root_path
         self.data_path = data_path
         self.__read_data__()
@@ -240,6 +249,9 @@ class Dataset_Custom(Dataset):
         if self.features == 'M' or self.features == 'MS':
             cols_data = df_raw.columns[1:]
             df_data = df_raw[cols_data]
+            if self.keep_ratio < 1.0:
+                n_keep = max(1, int(df_data.shape[1] * self.keep_ratio))
+                df_data = df_data.iloc[:, :n_keep]
         elif self.features == 'S':
             df_data = df_raw[[self.target]]
 
@@ -289,7 +301,7 @@ class Dataset_Custom(Dataset):
 class Dataset_PEMS(Dataset):
     def __init__(self, root_path, flag='train', size=None,
                  features='S', data_path='ETTh1.csv',
-                 target='OT', scale=True, timeenc=0, freq='h'):
+                 target='OT', scale=True, timeenc=0, freq='h', keep_ratio=1.0):
         # size [seq_len, label_len, pred_len]
         # info
         self.seq_len = size[0]
@@ -306,6 +318,7 @@ class Dataset_PEMS(Dataset):
         self.timeenc = timeenc
         self.freq = freq
 
+        self.keep_ratio = keep_ratio
         self.root_path = root_path
         self.data_path = data_path
         self.__read_data__()
@@ -315,6 +328,10 @@ class Dataset_PEMS(Dataset):
         data_file = os.path.join(self.root_path, self.data_path)
         data = np.load(data_file, allow_pickle=True)
         data = data['data'][:, :, 0]
+
+        if self.keep_ratio < 1.0:
+            n_keep = max(1, int(data.shape[1] * self.keep_ratio))
+            data = data[:, :n_keep]
 
         train_ratio = 0.6
         valid_ratio = 0.2
@@ -329,7 +346,7 @@ class Dataset_PEMS(Dataset):
             data = self.scaler.transform(data)
 
         df = pd.DataFrame(data)
-        df = df.fillna(method='ffill', limit=len(df)).fillna(method='bfill', limit=len(df)).values
+        df = df.ffill().bfill().values
 
         self.data_x = df
         self.data_y = df
@@ -357,7 +374,7 @@ class Dataset_PEMS(Dataset):
 class Dataset_Solar(Dataset):
     def __init__(self, root_path, flag='train', size=None,
                  features='S', data_path='ETTh1.csv',
-                 target='OT', scale=True, timeenc=0, freq='h'):
+                 target='OT', scale=True, timeenc=0, freq='h', keep_ratio=1.0):
         # size [seq_len, label_len, pred_len]
         # info
         self.seq_len = size[0]
@@ -374,6 +391,7 @@ class Dataset_Solar(Dataset):
         self.timeenc = timeenc
         self.freq = freq
 
+        self.keep_ratio = keep_ratio
         self.root_path = root_path
         self.data_path = data_path
         self.__read_data__()
@@ -387,6 +405,9 @@ class Dataset_Solar(Dataset):
                 data_line = np.stack([float(i) for i in line])
                 df_raw.append(data_line)
         df_raw = np.stack(df_raw, 0)
+        if self.keep_ratio < 1.0:
+            n_keep = max(1, int(df_raw.shape[1] * self.keep_ratio))
+            df_raw = df_raw[:, :n_keep]
         df_raw = pd.DataFrame(df_raw)
 
         num_train = int(len(df_raw) * 0.7)

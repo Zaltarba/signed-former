@@ -86,9 +86,20 @@ if __name__ == '__main__':
     parser.add_argument('--use_norm', type=int, default=True, help='use norm and denorm')
     parser.add_argument('--partial_start_index', type=int, default=0, help='the start index of variates for partial training, '
                                                                            'you can select [partial_start_index, min(enc_in + partial_start_index, N)]')
+    parser.add_argument('--keep_ratio', type=float, default=1.0, help='fraction of variates (N axis) to keep, e.g. 0.1 = first 10%%')
+    parser.add_argument('--time_budget', type=int, default=300, help='wall-clock training budget in seconds')
+    parser.add_argument('--patch_len', type=int, default=16, help='patch length for patch-based embedding')
+    parser.add_argument('--stride', type=int, default=8, help='stride between patches')
+    parser.add_argument('--n_stacks', type=int, default=3, help='number of N-BEATS-style stacks')
+    parser.add_argument('--attention_window', type=int, default=10, help='local attention window size (in patches)')
 
     args = parser.parse_args()
     args.use_gpu = True if torch.cuda.is_available() and args.use_gpu else False
+
+    if args.keep_ratio < 1.0:
+        args.enc_in = max(1, int(args.enc_in * args.keep_ratio))
+        args.dec_in = max(1, int(args.dec_in * args.keep_ratio))
+        args.c_out = max(1, int(args.c_out * args.keep_ratio))
 
     if args.use_gpu and args.use_multi_gpu:
         args.devices = args.devices.replace(' ', '')

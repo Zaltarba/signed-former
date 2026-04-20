@@ -9,6 +9,7 @@ import os
 import time
 import warnings
 import numpy as np
+import subprocess
 
 warnings.filterwarnings('ignore')
 
@@ -89,6 +90,8 @@ class Exp_Long_Term_Forecast(Exp_Basic):
             os.makedirs(path)
 
         time_now = time.time()
+        train_start = time.time()
+        time_budget = getattr(self.args, 'time_budget', None)
 
         train_steps = len(train_loader)
         early_stopping = EarlyStopping(patience=self.args.patience, verbose=True)
@@ -172,6 +175,10 @@ class Exp_Long_Term_Forecast(Exp_Basic):
             early_stopping(vali_loss, self.model, path)
             if early_stopping.early_stop:
                 print("Early stopping")
+                break
+
+            if time_budget is not None and (time.time() - train_start) >= time_budget:
+                print(f"Time budget of {time_budget}s reached after epoch {epoch + 1}, stopping training.")
                 break
 
             adjust_learning_rate(model_optim, epoch + 1, self.args)
@@ -269,6 +276,19 @@ class Exp_Long_Term_Forecast(Exp_Basic):
         f.write('\n')
         f.write('\n')
         f.close()
+
+        try:
+            commit = subprocess.check_output(['git', 'rev-parse', '--short', 'HEAD']).decode().strip()
+            description = subprocess.check_output(['git', 'log', '-1', '--pretty=%s']).decode().strip()
+        except Exception:
+            commit = 'unknown'
+            description = 'unknown'
+        gpu_mem = torch.cuda.max_memory_allocated() / 1e9 if torch.cuda.is_available() else 0.0
+        write_header = not os.path.exists('results.tsv')
+        with open('results.tsv', 'a') as tsv:
+            if write_header:
+                tsv.write("commit_hash\tMSE\tgpu_mem_gb\tstatus\tdescription\n")
+            tsv.write(f"{commit}\t{mse:.6f}\t{gpu_mem:.2f}\tok\t{description}\n")
 
         np.save(folder_path + 'metrics.npy', np.array([mae, mse, rmse, mape, mspe]))
         np.save(folder_path + 'pred.npy', preds)

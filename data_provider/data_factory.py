@@ -43,6 +43,7 @@ def data_provider(args, flag):
         target=args.target,
         timeenc=timeenc,
         freq=freq,
+        keep_ratio=getattr(args, 'keep_ratio', 1.0),
     )
     print(flag, len(data_set))
     data_loader = DataLoader(
