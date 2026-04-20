@@ -1,0 +1,29 @@
+[project]
+name = "autoresearch"
+version = "0.1.0"
+description = "Autonomous time series forecasting research"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "matplotlib>=3.10.0",
+    "numpy>=2.0.0",
+    "pandas>=2.0.0",
+    "pyarrow>=15.0.0",
+    "requests>=2.32.0",
+    "torch>=2.4.0",
+    "reformer-pytorch>=1.4.4",
+    "scikit-learn>=1.7.2",
+]
+
+[tool.uv]
+link-mode = "copy"
+
+[tool.uv.sources]
+torch = [
+    { index = "pytorch-cu121", marker = "sys_platform == 'linux'" },
+]
+
+[[tool.uv.index]]
+name = "pytorch-cu121"
+url = "https://download.pytorch.org/whl/cu121"
+explicit = true
