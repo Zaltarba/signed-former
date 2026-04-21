@@ -1,0 +1,28 @@
+# Ideas Log
+
+Semantic memory for the auto-research loop. One entry per attempt.
+Read only the last 5 entries for context. Append only — never rewrite.
+
+Format:
+  ## <commit_hash> — <short title>  [structural | parametric]
+  **Hypothesis:** <why this change might help>
+  **Change:** <conceptual description, no code; for parametric, note the value tried>
+  **Result:** MSE <before> → <after> ✓ improved | ✗ no improvement | ✗ crash
+  **Status:** open (more values to try) | exhausted | done
+  ---
+
+---
+
+## dc2269f — baseline (starting point)  [structural]
+**Hypothesis:** N/A — initial architecture
+**Change:** Space-time signed attention with causal TCN embedding, 1 stack
+**Result:** MSE — → 0.1998 ✓ improved
+**Status:** done
+---
+
+## e7939ea — trend decomposition before attention  [structural]
+**Hypothesis:** Signed attention correlates better on detrended residuals; separating trend via DLinear lets the encoder focus on cross-variate residual structure.
+**Change:** Added DLinearForecast (moving-average decomp + linear trend projection) before encoder; encoder operates on residual only; final forecast = trend + residual forecast.
+**Result:** MSE 0.1998 → 0.1143 ✓ improved
+**Status:** done
+---
