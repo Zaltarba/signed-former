@@ -103,3 +103,10 @@ Format:
 **Result:** MSE 0.0985 → 0.1039 ✗ no improvement (3 dilation levels slow epoch to ~130s; only 4 epochs in 600s vs 7)
 **Status:** exhausted
 ---
+
+## 7e80155 — e_layers 3→2 (parametric speed up)  [parametric]
+**Hypothesis:** Fewer attention layers reduce per-epoch compute, fitting ~14 epochs in 600s vs 7, improving convergence.
+**Change:** e_layers 3→2 in experiment.sh; epoch time drops to ~50s, 10 epochs completed in budget.
+**Result:** MSE 0.0985 → 0.0961 ✓ improved (10 epochs completed, best at epoch 10, vali 0.1023)
+**Status:** open (e_layers=1 may allow even more epochs; worth trying)
+---
