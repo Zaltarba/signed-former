@@ -108,5 +108,68 @@ Format:
 **Hypothesis:** Fewer attention layers reduce per-epoch compute, fitting ~14 epochs in 600s vs 7, improving convergence.
 **Change:** e_layers 3→2 in experiment.sh; epoch time drops to ~50s, 10 epochs completed in budget.
 **Result:** MSE 0.0985 → 0.0961 ✓ improved (10 epochs completed, best at epoch 10, vali 0.1023)
-**Status:** open (e_layers=1 may allow even more epochs; worth trying)
+**Status:** exhausted (e_layers=1 gave MSE 0.0968, worse; sweet spot is e_layers=2)
+---
+
+## 9a30d72 — e_layers 1 (parametric sweep)  [parametric]
+**Hypothesis:** Single attention layer allows ~16 epochs in budget, potentially better convergence via more training rounds.
+**Change:** e_layers 2→1 in experiment.sh; train_epochs 7→20 (time_budget is binding constraint anyway).
+**Result:** MSE 0.0961 → 0.0968 ✗ no improvement (16 epochs but less capacity; plateaued at vali 0.1037)
+**Status:** exhausted
+---
+
+## 6551fb4 — learnable relative position bias in attention  [structural]
+**Hypothesis:** A learnable scalar bias per lag offset (0..9) gives the model a prior on temporal decay of attention scores.
+**Change:** Added pos_bias (10 params per layer) to scores before masking; lag_idx cached alongside causal mask.
+**Result:** MSE 0.0961 → 0.0968 ✗ no improvement (11 epochs, plateaued at same level as e_layers=2 baseline)
+**Status:** exhausted
+---
+
+## a5be3d1 — dropout 0.1→0.05 (parametric sweep)  [parametric]
+**Hypothesis:** With only 10 epochs, dropout=0.1 may over-regularize; reducing to 0.05 could improve convergence.
+**Change:** dropout 0.1→0.05 in experiment.sh.
+**Result:** MSE 0.0961 → 0.0975 ✗ no improvement (dropout=0.1 is the better regularization level)
+**Status:** exhausted (dropout=0.1 is sweet spot; higher and lower both worse)
+---
+
+## f67659e — ConvFFN expand 2→4 (wider FFN)  [structural]
+**Hypothesis:** Doubling the FFN expansion factor gives richer per-token feature transformation after attention.
+**Change:** ConvFFN expand=2→4 in Stack; hidden width doubles from n_heads×2 to n_heads×4.
+**Result:** MSE 0.0961 → 0.0973 ✗ no improvement (wider FFN didn't help; same 10 epochs)
+**Status:** exhausted
+---
+
+## 4c2b574 — last-value persistence padding for future tokens  [structural]
+**Hypothesis:** Padding the future residual with the last known value (instead of zeros) gives the encoder a better prior for future token features in traffic data (smooth, slow changes).
+**Change:** Replaced F.pad with last_val.expand; future tokens initialized to last residual value.
+**Result:** MSE 0.0961 → 0.0973 ✗ no improvement (similar to zero-padding for this architecture)
+**Status:** exhausted
+---
+
+## b8630d4 — 2-level Haar wavelet token embedding  [structural]
+**Hypothesis:** Transforming patch features to [coarse avg + medium detail + fine detail] gives attention a multi-scale view aligned with hierarchical traffic patterns.
+**Change:** Added _haar_2level() after patch extraction; maps D=32 time features to 32 wavelet coefficients (8 slow + 8 medium + 16 fine).
+**Result:** MSE 0.0961 → 0.0981 ✗ no improvement (wavelet reordering hurts rather than helps attention alignment)
+**Status:** exhausted
+---
+
+## 71ee5ee — two-level DLinear decomposition (k=25 + k=5)  [structural]
+**Hypothesis:** Adding a second DLinear(kernel=5) on the residual strips medium-frequency trends (rush-hour scale), letting encoder handle only fine residuals.
+**Change:** Added trend_decomp_fast (kernel=5); forecast = slow_trend(k=25) + fast_trend(k=5) + encoder_out; +2304 params.
+**Result:** MSE 0.0961 → 0.0955 ✗ below threshold (delta 0.0006 < 0.001; BUT consistently better trajectory throughout all 10 epochs; vali 0.1010 vs 0.1023)
+**Status:** exhausted (k=25+k=9: 0.1095 — too slow (202s/epoch, 3 epochs only); k=25+k=5 was below threshold; two-level DLinear adds too much compute)
+---
+
+## b8907e1 — two-level DLinear k=97+k=25 (parametric variant)  [parametric]
+**Hypothesis:** Very slow kernel (k=97, ~8h) + medium (k=25, ~2h) better captures hierarchical traffic trends.
+**Change:** trend_decomp_slow kernel 25→97, trend_decomp_fast kept at 25.
+**Result:** MSE 0.0961 → 0.0993 ✗ no improvement (k=97 removes too much at seq_len=192; underfit)
+**Status:** exhausted
+---
+
+## ce2d687 — two-level DLinear k=25+k=9 (parametric variant)  [parametric]
+**Hypothesis:** k=9 fast kernel (between failed k=25 and below-threshold k=5) would balance trend removal and epoch speed.
+**Change:** trend_decomp_slow kernel=25, trend_decomp_fast kernel=9.
+**Result:** MSE 0.0961 → 0.1095 ✗ no improvement (202s/epoch → only 3 epochs; compute bottleneck dominates)
+**Status:** exhausted
 ---

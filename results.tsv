@@ -15,3 +15,13 @@ ac19216	0.098536	3.10	ok	train_epochs 7->10: no improvement (same early-stop at 
 0c74523	0.106565	3.10	ok	FFT spectral Q/K attention (slower, worse)
 3930551	0.103889	3.13	ok	Stage3 TCN dilations (1,2,4): wider receptive field before patch extraction
 7e80155	0.096077	3.10	ok	Reduce e_layers 3→2: fewer attention layers for faster epochs and more training rounds
+9a30d72	0.096845	3.10	ok	Try e_layers=1: single attention layer for even faster epochs (~15+ in 600s)
+6551fb4	0.096807	3.10	ok	Add learnable relative position bias in SignedAttention (10 params per layer)
+a5be3d1	0.097497	3.10	ok	Reduce dropout 0.1→0.05: less regularization for faster convergence in budget
+f67659e	0.097330	3.10	ok	ConvFFN expand 2→4: wider FFN for richer per-token feature transformation
+4c2b574	0.097253	3.10	ok	Use last-value persistence padding instead of zeros for future residual tokens
+b8630d4	0.098112	3.10	ok	Add 2-level Haar wavelet transform to patch tokens for multi-scale representation
+71ee5ee	0.095509	3.10	ok	Two-level DLinear: slow trend (k=25) + fast trend (k=5) before encoder
+b8907e1	0.099258	3.10	ok	Two-level DLinear k=97+k=25: very slow trend + medium trend before encoder
+b8907e1	0.115294	2.29	ok	Two-level DLinear k=97+k=25: very slow trend + medium trend before encoder
+ce2d687	0.109471	3.10	ok	Two-level DLinear k=25+k=9: medium-fast trend decomposition before encoder
