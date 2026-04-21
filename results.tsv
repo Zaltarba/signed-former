@@ -6,3 +6,5 @@ ee3e14a	0.115549	19.19	ok	Test non-strict causal mask: allow same-time-patch cro
 f415009	N/A	0.0	crash	Head specialization: per-head log-spaced attention windows (venv not activated)
 f415009	0.113367	19.22	ok	Head specialization: per-head log-spaced attention windows [1..20] for lag diversity
 698831e	0.109381	19.28	ok	Increase d_model 32→128 for richer feature extraction; restore venv activation
+fd7094b	0.109608	19.28	ok	d_model 256 (no improvement, exhausted sweep)
+8743ef1	0.109743	19.28	ok	Normalize Q/K patches before attention: shape-correlation

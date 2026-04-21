@@ -45,5 +45,19 @@ Format:
 **Hypothesis:** Model at 3831 params is capacity-starved; richer stage1 feature extraction (1→128 channels before head projection) should improve embedding quality.
 **Change:** Increased d_model from 32 to 128 in experiment.sh; also restored venv activation line. Model params: 3831 → 6903.
 **Result:** MSE 0.1143 → 0.1094 ✓ improved
-**Status:** open (try d_model=256 next)
+**Status:** exhausted (d_model=256 gave 0.1096, worse; sweet spot is 128)
+---
+
+## fd7094b — d_model 256 (parametric sweep)  [parametric]
+**Hypothesis:** Further increasing d_model beyond 128 would continue improving embedding quality.
+**Change:** d_model 128→256 in experiment.sh; model params 6903→10999.
+**Result:** MSE 0.1094 → 0.1096 ✗ no improvement
+**Status:** exhausted
+---
+
+## 8743ef1 — normalize Q/K patches before attention  [structural]
+**Hypothesis:** Standardizing Q and K to zero-mean/unit-variance makes attention measure shape-correlation rather than raw dot product, better aligned with lead-lag structure.
+**Change:** Apply _standardize(q) and _standardize(k) before computing scores; V left unnormalized.
+**Result:** MSE 0.1094 → 0.1097 ✗ no improvement
+**Status:** exhausted
 ---
