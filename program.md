@@ -9,18 +9,18 @@ data_path:       PEMS08.npz
 features:        M
 seq_len:         96
 pred_len:        12
-enc_in:          170     # full sensor count; auto-reduced to floor(170 * keep_ratio) = 51
+enc_in:          170     # full sensor count; auto-reduced to floor(170 * keep_ratio) = 40
 freq:            h       # unused for PEMS (no time marks)
-keep_ratio:      0.3     # first 51 of 170 sensors used across train/val/test
+keep_ratio:      0.2     # first 40 of 170 sensors used across train/val/test
 ```
 
 `keep_ratio` is applied identically to train/val/test (always the first N columns). The scaler is fit only on the kept variates. `enc_in`, `dec_in`, and `c_out` are automatically adjusted in `run.py`.
 
 ## Fixed Settings (do not change)
 
-- Optimizer: Adam, lr=0.0001
+- Optimizer: Adam, lr=0.001
 - Batch size: 32
-- train_epochs: 10  (calibrate manually — increase if 5 min budget is not reached)
+- train_epochs: 2  (calibrate manually — increase if 5 min budget is not reached)
 - time_budget: 300  (seconds; hard stop at epoch boundary if epochs haven't finished)
 - Loss: MSE
 - Early stopping patience: 3 (whichever triggers first: early stopping or time budget)
@@ -49,7 +49,7 @@ Do not touch: optimizer, learning rate, batch size, keep_ratio, data pipeline, a
 3. Implement it in `model/CustomModel.py`
 4. Run `bash experiment.sh`
 5. Record result in `results.tsv`
-6. Keep commit if MSE improved over best so far, otherwise `git reset HEAD~1`
+6. Keep commit if MSE improved over best so far, otherwise `git reset --hard HEAD~1`
 
 ## Baseline
 

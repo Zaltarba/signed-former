@@ -24,17 +24,18 @@ if python run.py \
   --d_ff 512 \
   --dropout 0.1 \
   --embed timeF \
-  --train_epochs 10 \
+  --train_epochs 3 \
   --batch_size 32 \
-  --learning_rate 0.0001 \
+  --learning_rate 0.001 \
   --patience 3 \
-  --keep_ratio 0.03 \
+  --keep_ratio 0.2 \
   --time_budget 300 \
   --patch_len 12 \
   --stride 6 \
   --n_stacks 1 \
   --attention_window 10 \
   --use_norm 1 \
+  --lradj fixed \
   --itr 1 \
   --des "autorun"; then
   echo "Experiment completed successfully."
