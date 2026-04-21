@@ -22,7 +22,7 @@ if python run.py \
   --c_out 170 \
   --d_model 128 \
   --n_heads 8 \
-  --e_layers 3 \
+  --e_layers 2 \
   --d_ff 32 \
   --dropout 0.1 \
   --embed timeF \
