@@ -157,5 +157,12 @@ Format:
 **Hypothesis:** Adding a second DLinear(kernel=5) on the residual strips medium-frequency trends (rush-hour scale), letting encoder handle only fine residuals.
 **Change:** Added trend_decomp_fast (kernel=5); forecast = slow_trend(k=25) + fast_trend(k=5) + encoder_out; +2304 params.
 **Result:** MSE 0.0961 → 0.0955 ✗ below threshold (delta 0.0006 < 0.001; BUT consistently better trajectory throughout all 10 epochs; vali 0.1010 vs 0.1023)
-**Status:** open (promising direction; try different kernel combinations e.g. k=97 for slow + k=25 for medium)
+**Status:** open (tried k=97+k=25: 0.0993, much worse; sweet spot around k=25+k=5; try k=25+k=9 or k=25+k=3)
+---
+
+## b8907e1 — two-level DLinear k=97+k=25 (parametric variant)  [parametric]
+**Hypothesis:** Very slow kernel (k=97, ~8h) + medium (k=25, ~2h) better captures hierarchical traffic trends.
+**Change:** trend_decomp_slow kernel 25→97, trend_decomp_fast kept at 25.
+**Result:** MSE 0.0961 → 0.0993 ✗ no improvement (k=97 removes too much at seq_len=192; underfit)
+**Status:** exhausted
 ---
