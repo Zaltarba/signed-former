@@ -5,3 +5,4 @@ e7939ea	0.114277	19.19	ok	Add trend decomposition: DLinearForecast separates tre
 ee3e14a	0.115549	19.19	ok	Test non-strict causal mask: allow same-time-patch cross-variate attention
 f415009	N/A	0.0	crash	Head specialization: per-head log-spaced attention windows (venv not activated)
 f415009	0.113367	19.22	ok	Head specialization: per-head log-spaced attention windows [1..20] for lag diversity
+698831e	0.109381	19.28	ok	Increase d_model 32→128 for richer feature extraction; restore venv activation
