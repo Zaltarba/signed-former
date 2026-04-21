@@ -12,3 +12,6 @@ a152fb0	0.118029	0.0	ok	Add second stack: n_stacks=2 (only 1 epoch, too slow)
 ff4635c	0.106594	3.10	ok	stride 6->16: reduce tokens for more epochs
 dcbb151	0.098495	3.10	ok	train_epochs 3->7: fill 600s budget (MSE best at epoch 6)
 ac19216	0.098536	3.10	ok	train_epochs 7->10: no improvement (same early-stop at epoch 7)
+0c74523	0.106565	3.10	ok	FFT spectral Q/K attention (slower, worse)
+3930551	0.103889	3.13	ok	Stage3 TCN dilations (1,2,4): wider receptive field before patch extraction
+7e80155	0.096077	3.10	ok	Reduce e_layers 3→2: fewer attention layers for faster epochs and more training rounds
