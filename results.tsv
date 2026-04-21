@@ -9,3 +9,6 @@ f415009	0.113367	19.22	ok	Head specialization: per-head log-spaced attention win
 fd7094b	0.109608	19.28	ok	d_model 256 (no improvement, exhausted sweep)
 8743ef1	0.109743	19.28	ok	Normalize Q/K patches before attention: shape-correlation
 a152fb0	0.118029	0.0	ok	Add second stack: n_stacks=2 (only 1 epoch, too slow)
+ff4635c	0.106594	3.10	ok	stride 6->16: reduce tokens for more epochs
+dcbb151	0.098495	3.10	ok	train_epochs 3->7: fill 600s budget (MSE best at epoch 6)
+ac19216	0.098536	3.10	ok	train_epochs 7->10: no improvement (same early-stop at epoch 7)
