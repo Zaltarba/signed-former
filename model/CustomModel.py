@@ -105,6 +105,15 @@ class TimeEmbedding(nn.Module):
         )
         self.dropout = nn.Dropout(dropout)
 
+    @staticmethod
+    def _haar_2level(x):
+        """2-level Haar wavelet on last dim (must be length 32). x: (..., D)"""
+        a1 = (x[..., 0::2] + x[..., 1::2]) * 0.5   # (..., 16)
+        d1 = (x[..., 0::2] - x[..., 1::2]) * 0.5   # (..., 16)
+        a2 = (a1[..., 0::2] + a1[..., 1::2]) * 0.5  # (..., 8)
+        d2 = (a1[..., 0::2] - a1[..., 1::2]) * 0.5  # (..., 8)
+        return torch.cat([a2, d2, d1], dim=-1)        # (..., 32)
+
     def forward(self, x: torch.Tensor, x_mark=None):
         """x: (B, T, N) → (B, n_heads, n_patches*N, patch_len)"""
         x = x.permute(0, 2, 1)                   # (B, N, T)
@@ -124,6 +133,7 @@ class TimeEmbedding(nn.Module):
         patches = patches.permute(0, 2, 3, 1, 4)         # (B, H, P, N, D)
         patches = patches.reshape(B, self.n_heads, self.n_patches * N, self.patch_len)
 
+        patches = self._haar_2level(patches)              # multi-scale wavelet representation
         return self.dropout(patches)
 
 
@@ -412,8 +422,7 @@ class Model(nn.Module):
         resid = resid.permute(0, 2, 1)                        # (B, T, N)
         trend_forecast = trend_forecast.permute(0, 2, 1)      # (B, pred_len, N)
 
-        last_val = resid[:, -1:, :].expand(-1, self.pred_len, -1)
-        resid = torch.cat([resid, last_val], dim=1)
+        resid = F.pad(resid, (0, 0, 0, self.pred_len))
 
         resid_out, attns = self.encoder(resid)
 
