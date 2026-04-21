@@ -173,3 +173,17 @@ Format:
 **Result:** MSE 0.0961 → 0.1095 ✗ no improvement (202s/epoch → only 3 epochs; compute bottleneck dominates)
 **Status:** exhausted
 ---
+
+## 4be440a — batch_size 32→64 (parametric sweep)  [parametric]
+**Hypothesis:** Halving steps per epoch to ~164 would double the epoch speed and allow ~24 epochs in the 600s budget.
+**Change:** batch_size 32→64 in experiment.sh.
+**Result:** MSE 0.0961 → 0.1141 ✗ no improvement (each step takes ~0.61s vs 0.15s with batch=32; epoch ~105s, only 3 epochs)
+**Status:** exhausted (larger batch does not speed up training; GPU compute scales with batch size here)
+---
+
+## 298adf7 — learnable variate embeddings in TimeEmbedding  [structural]
+**Hypothesis:** Adding per-variate identity embeddings (enc_in × patch_len) gives attention explicit identity signals to route cross-variate correlations.
+**Change:** Added nn.Embedding(enc_in, patch_len) to TimeEmbedding; added to (B,H,P,N,D) patches before reshape.
+**Result:** MSE 0.0961 → 0.1125 ✗ no improvement (84s/epoch → only 7 epochs vs baseline 10; embedding lookup added unexpected compute)
+**Status:** exhausted
+---
