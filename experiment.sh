@@ -26,7 +26,7 @@ if python run.py \
   --d_ff 32 \
   --dropout 0.1 \
   --embed timeF \
-  --train_epochs 3 \
+  --train_epochs 7 \
   --batch_size 32 \
   --learning_rate 0.001 \
   --patience 3 \
