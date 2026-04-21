@@ -124,3 +124,10 @@ Format:
 **Result:** MSE 0.0961 → 0.0968 ✗ no improvement (11 epochs, plateaued at same level as e_layers=2 baseline)
 **Status:** exhausted
 ---
+
+## a5be3d1 — dropout 0.1→0.05 (parametric sweep)  [parametric]
+**Hypothesis:** With only 10 epochs, dropout=0.1 may over-regularize; reducing to 0.05 could improve convergence.
+**Change:** dropout 0.1→0.05 in experiment.sh.
+**Result:** MSE 0.0961 → 0.0975 ✗ no improvement (dropout=0.1 is the better regularization level)
+**Status:** exhausted (dropout=0.1 is sweet spot; higher and lower both worse)
+---
