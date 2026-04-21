@@ -131,3 +131,10 @@ Format:
 **Result:** MSE 0.0961 → 0.0975 ✗ no improvement (dropout=0.1 is the better regularization level)
 **Status:** exhausted (dropout=0.1 is sweet spot; higher and lower both worse)
 ---
+
+## f67659e — ConvFFN expand 2→4 (wider FFN)  [structural]
+**Hypothesis:** Doubling the FFN expansion factor gives richer per-token feature transformation after attention.
+**Change:** ConvFFN expand=2→4 in Stack; hidden width doubles from n_heads×2 to n_heads×4.
+**Result:** MSE 0.0961 → 0.0973 ✗ no improvement (wider FFN didn't help; same 10 epochs)
+**Status:** exhausted
+---

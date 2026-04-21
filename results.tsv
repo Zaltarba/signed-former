@@ -18,3 +18,4 @@ ac19216	0.098536	3.10	ok	train_epochs 7->10: no improvement (same early-stop at 
 9a30d72	0.096845	3.10	ok	Try e_layers=1: single attention layer for even faster epochs (~15+ in 600s)
 6551fb4	0.096807	3.10	ok	Add learnable relative position bias in SignedAttention (10 params per layer)
 a5be3d1	0.097497	3.10	ok	Reduce dropout 0.1→0.05: less regularization for faster convergence in budget
+f67659e	0.097330	3.10	ok	ConvFFN expand 2→4: wider FFN for richer per-token feature transformation
