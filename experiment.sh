@@ -33,7 +33,7 @@ if python run.py \
   --keep_ratio 0.2 \
   --time_budget 600 \
   --patch_len 32 \
-  --stride 6 \
+  --stride 16 \
   --n_stacks 1 \
   --attention_window 10 \
   --use_norm 1 \
