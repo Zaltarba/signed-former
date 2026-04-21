@@ -40,6 +40,8 @@ Modify `model/CustomModel.py` freely:
 
 The agent may also edit the corresponding args in `experiment.sh` to change `patch_len`, `stride`, `n_stacks`, `attention_window`, `d_model`, `n_heads`, `e_layers`.
 
+The agent may also use `x_mark_enc` and `x_mark_dec` (temporal features: hour, weekday, day, month — shape `(B, T, 4)` for freq=h) inside `model/CustomModel.py`. These are **predictable** features: `x_mark_dec` covers the future horizon and is always available at inference time, so they can be used freely for trend/seasonal estimation without any leakage.
+
 Do not touch: optimizer, learning rate, batch size, keep_ratio, data pipeline, any file other than `model/CustomModel.py` and `experiment.sh`.
 
 ## Target
@@ -48,7 +50,7 @@ A good MSE on PEMS08 is **≤ 0.08**. Use this as the long-term reference point 
 
 ## Iteration Procedure
 
-1. Read `ideas_log.txt` (last 5 entries only) — identify which changes improved MSE; do not use `git log`
+1. Read `ideas_log.txt` (all entries) — identify which changes improved MSE; do not use `git log`
 2. Count how many iterations have been run (from `results.tsv`). If fewer than 10, prioritise **structural changes** (new mechanisms). After iteration 10, shift toward exploiting what worked.
 3. Before picking a new hypothesis, ask: has a recent idea been tried with only one hyperparameter setting? If so, consider a variant before moving on — some ideas need tuning to work, not discarding.
 4. Form a hypothesis: one focused change and why it might help. Label it as either:
@@ -121,9 +123,26 @@ A change is only worth keeping if **MSE improves by at least 0.001** over the cu
 
 **Signal decomposition (good directions to explore):**
 - Detrend before attention: moving-average trend removal, run signed attention on residuals, forecast trend separately
+- **FFT detrending**: use the real FFT of the input to extract a low-frequency trend component (keep the lowest K frequency bins, reconstruct via iFFT) — no learnable parameters, exact and differentiable. Run signed attention on the detrended residual; forecast trend separately via a linear projection.
 - FFT token embedding: represent each patch as its frequency spectrum (magnitude + phase) before attention
 - Wavelet token embedding: multi-resolution patch decomposition (e.g. Haar or db1 wavelet) to capture structure at several scales
 - Mel-log spectrogram embedding: apply mel filterbank to patches, use log-compressed spectral energy as token features — good for capturing periodic patterns in traffic data
+
+**Temporal mark trend learning (priority direction — explore for at least 3–4 iterations):**
+
+The pipeline is:
+1. RevIN normalization on `x_enc`
+2. Learn a **mark-conditioned trend** from `x_mark_enc` (a lightweight model, e.g. MLP or Fourier basis over temporal features) and subtract it from the RevIN-normalized `x_enc` to get residuals
+3. Run the encoder (space-time attention) on the residuals to forecast the residual component
+4. Predict the future trend by running the same mark model on `x_mark_dec[:, -pred_len:, :]` — this is leakage-free because temporal marks are always known in advance
+5. Final forecast = residual forecast + trend forecast, then RevIN denormalization
+
+Variants to explore across iterations (do not give up after one failure):
+- **Architecture of the mark model**: MLP with 1–2 hidden layers; Fourier basis (learnable sin/cos harmonics per temporal feature); linear projection
+- **Number of harmonics** (if Fourier): 2, 4, 8
+- **Whether to also use FFT detrending first**, then use marks for residual-of-residual
+- **Interaction between mark model and RevIN**: try applying mark model before vs. after RevIN
+- Mark-conditioned trend should be tested with and without the encoder — a mark-only baseline (no attention) helps isolate its contribution
 
 ### Reference papers
 
