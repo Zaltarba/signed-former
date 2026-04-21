@@ -145,3 +145,10 @@ Format:
 **Result:** MSE 0.0961 → 0.0973 ✗ no improvement (similar to zero-padding for this architecture)
 **Status:** exhausted
 ---
+
+## b8630d4 — 2-level Haar wavelet token embedding  [structural]
+**Hypothesis:** Transforming patch features to [coarse avg + medium detail + fine detail] gives attention a multi-scale view aligned with hierarchical traffic patterns.
+**Change:** Added _haar_2level() after patch extraction; maps D=32 time features to 32 wavelet coefficients (8 slow + 8 medium + 16 fine).
+**Result:** MSE 0.0961 → 0.0981 ✗ no improvement (wavelet reordering hurts rather than helps attention alignment)
+**Status:** exhausted
+---
