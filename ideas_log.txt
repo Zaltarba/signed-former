@@ -73,5 +73,19 @@ Format:
 **Hypothesis:** With stride=6 the model only gets 2 epochs in 600s; stride=16 reduces tokens 986→408, giving 3+ epochs which should improve convergence.
 **Change:** stride 6→16 in experiment.sh; n_patches 29→12 per series, 408 vs 986 tokens. Each epoch ~80s vs ~365s.
 **Result:** MSE 0.1094 → 0.1066 ✓ improved (3 epochs completed in 258s)
-**Status:** open (try stride=32 for even more epochs, or stride=8 for more temporal resolution)
+**Status:** done
+---
+
+## dcbb151 — train_epochs 3→7 to fill time budget  [parametric]
+**Hypothesis:** Stride=16 gives ~62s/epoch; train_epochs=7 fills 434s of the 600s budget, allowing proper convergence.
+**Change:** train_epochs 3→7 in experiment.sh.
+**Result:** MSE 0.1066 → 0.0985 ✓ improved (best at epoch 6, vali 0.1032)
+**Status:** exhausted (train_epochs=10 gave same MSE 0.09854, model peaks at epoch 6 regardless)
+---
+
+## ac19216 — train_epochs 7→10 to exhaust budget  [parametric]
+**Hypothesis:** 7 epochs used only 434s of 600s; 3 more epochs might push past the plateau.
+**Change:** train_epochs 7→10 in experiment.sh.
+**Result:** MSE 0.0985 → 0.09854 ✗ no improvement (early stopping at epoch 7 regardless)
+**Status:** exhausted
 ---
