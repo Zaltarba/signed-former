@@ -246,7 +246,7 @@ class Stack(nn.Module):
         self.attn_drops = nn.ModuleList([nn.Dropout(dropout) for _ in range(e_layers)])
         self.attn_norms = nn.ModuleList([nn.RMSNorm(patch_len) for _ in range(e_layers)])
         self.ffns = nn.ModuleList([
-            ConvFFN(n_heads, patch_len, expand=2, kernel_size=3, dropout=dropout)
+            ConvFFN(n_heads, patch_len, expand=4, kernel_size=3, dropout=dropout)
             for _ in range(e_layers)
         ])
 

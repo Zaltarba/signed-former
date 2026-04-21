@@ -24,7 +24,7 @@ if python run.py \
   --n_heads 8 \
   --e_layers 2 \
   --d_ff 32 \
-  --dropout 0.05 \
+  --dropout 0.1 \
   --embed timeF \
   --train_epochs 20 \
   --batch_size 32 \
