@@ -49,7 +49,7 @@ Each entry follows this exact format:
 **Context discipline — strictly follow these rules:**
 - Do **not** read `git log` at any point; `ideas_log.txt` is the sole history source
 - Do **not** run `git show`, `git diff`, or any command that retrieves past code — the only code context is the current `model/CustomModel.py`
-- Do **not** re-read past entries in full; only scan the last 5 entries for recent context, and the best result line for the current champion MSE
+- Read **all entries** in `ideas_log.txt` in full each iteration to avoid re-trying ideas and to identify patterns across the full experiment history
 - Check the **Status** field of recent entries: `open` means the idea has untried parameter values and should be continued before moving on; `exhausted` means all variants failed and it should not be revisited
 - Keep entries short: hypothesis and change descriptions must each fit in one sentence
 - Never rewrite or delete past entries — append only
@@ -78,4 +78,4 @@ Tab-separated columns: `commit_hash`, `MSE`, `gpu_mem_gb`, `status`, `descriptio
 - One commit per attempted change, with a short message describing the hypothesis
 - On improvement: commit stays
 - On no improvement or crash: `git reset --hard HEAD~1` — never amend, never force-push
-- Read `ideas_log.txt` (last 5 entries) to calibrate next move — never `git log`; early iterations explore broadly, later ones exploit what worked
+- Read `ideas_log.txt` (all entries) to calibrate next move — never `git log`; early iterations explore broadly, later ones exploit what worked

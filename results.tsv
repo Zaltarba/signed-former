@@ -27,3 +27,6 @@ b8907e1	0.115294	2.29	ok	Two-level DLinear k=97+k=25: very slow trend + medium t
 ce2d687	0.109471	3.10	ok	Two-level DLinear k=25+k=9: medium-fast trend decomposition before encoder
 4be440a	0.114131	3.10	ok	batch_size 32→64: halve epoch steps (no speedup, only 3 epochs)
 298adf7	0.112509	3.10	ok	Learnable variate embeddings in TimeEmbedding (84s/epoch, only 7 epochs)
+428fe46	0.106093	2.29	ok	Diagonal Q/K feature scaling: learnable per-dim weights for attention (32 params/layer, zero extra matmul)
+428fe46	0.106093	3.10	ok	Diagonal Q/K feature scaling: elementwise per-dim weight (4 epochs due to GPU contention)
+428fe46	0.107405	2.29	ok	Diagonal Q/K feature scaling: learnable per-dim weights for attention (32 params/layer, zero extra matmul)

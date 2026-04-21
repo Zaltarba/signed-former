@@ -187,3 +187,10 @@ Format:
 **Result:** MSE 0.0961 → 0.1125 ✗ no improvement (84s/epoch → only 7 epochs vs baseline 10; embedding lookup added unexpected compute)
 **Status:** exhausted
 ---
+
+## 428fe46 — diagonal Q/K feature scaling (elementwise)  [structural]
+**Hypothesis:** Learnable per-dim scaling of Q and K (32 params/layer) selects informative patch features for attention at near-zero compute cost.
+**Change:** Added qk_feature_scale parameter (ones init); Q and K multiplied by it before attention; V unchanged.
+**Result:** MSE 0.0961 → 0.1061 ✗ no improvement (GPU contention: 100s/epoch → only 4 epochs; weak per-epoch improvement vs full Q/K proj)
+**Status:** exhausted
+---
