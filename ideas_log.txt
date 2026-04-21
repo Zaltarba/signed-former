@@ -89,3 +89,10 @@ Format:
 **Result:** MSE 0.0985 → 0.09854 ✗ no improvement (early stopping at epoch 7 regardless)
 **Status:** exhausted
 ---
+
+## 0c74523 — FFT spectral Q/K attention  [structural]
+**Hypothesis:** Frequency-domain similarity (FFT magnitude+phase) for Q/K captures periodic traffic patterns better than raw time-domain dot product.
+**Change:** Apply rfft to Q and K, concatenate real+imag as features (dim 32→34); V remains raw time-domain.
+**Result:** MSE 0.0985 → 0.1066 ✗ no improvement (FFT doubles epoch time: only 4 epochs vs 7)
+**Status:** exhausted
+---

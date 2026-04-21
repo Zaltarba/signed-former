@@ -99,7 +99,7 @@ class TimeEmbedding(nn.Module):
         )
         self.stage3 = TCNBlock(
             n_channels=n_heads,
-            dilations=(1,),
+            dilations=(1, 2, 4),
             kernel_size=8,
             dropout=dropout,
         )
