@@ -40,3 +40,10 @@ Format:
 **Result:** MSE 0.1143 → 0.1134 ✗ no improvement (delta 0.0009, below 0.001 threshold)
 **Status:** exhausted
 ---
+
+## 698831e — d_model 32→128 (parametric capacity increase)  [parametric]
+**Hypothesis:** Model at 3831 params is capacity-starved; richer stage1 feature extraction (1→128 channels before head projection) should improve embedding quality.
+**Change:** Increased d_model from 32 to 128 in experiment.sh; also restored venv activation line. Model params: 3831 → 6903.
+**Result:** MSE 0.1143 → 0.1094 ✓ improved
+**Status:** open (try d_model=256 next)
+---
