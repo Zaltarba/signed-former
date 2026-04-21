@@ -22,11 +22,11 @@ if python run.py \
   --c_out 170 \
   --d_model 128 \
   --n_heads 8 \
-  --e_layers 2 \
+  --e_layers 1 \
   --d_ff 32 \
   --dropout 0.1 \
   --embed timeF \
-  --train_epochs 7 \
+  --train_epochs 20 \
   --batch_size 32 \
   --learning_rate 0.001 \
   --patience 3 \
