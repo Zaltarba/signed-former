@@ -365,7 +365,7 @@ class DLinearForecast(nn.Module):
 
 class Model(nn.Module):
     """
-    RevIN → n_stacks × [embed → SignedAttention × e_layers → forecast] → Σ forecasts → RevIN⁻¹
+    RevIN → trend decomp → n_stacks × [embed → SignedAttention × e_layers → forecast residual] → trend + residual → RevIN⁻¹
     """
 
     def __init__(self, configs):
@@ -378,6 +378,8 @@ class Model(nn.Module):
         self.n_heads = configs.n_heads
         self.enc_in = configs.enc_in
         self.n_stacks = getattr(configs, 'n_stacks', 3)
+
+        self.trend_decomp = DLinearForecast(configs.seq_len, configs.pred_len, kernel_size=25)
 
         self.encoder = StackedEncoder(
             n_stacks=self.n_stacks,
@@ -404,9 +406,17 @@ class Model(nn.Module):
             stdev = (x_enc.var(dim=1, keepdim=True, correction=0) + 1e-5).sqrt()
             x_enc = x_enc / stdev
 
-        x_enc = F.pad(x_enc, (0, 0, 0, self.pred_len))
+        # Decompose into trend forecast + residual; encoder handles residual
+        x_t = x_enc.permute(0, 2, 1)                         # (B, N, T)
+        trend_forecast, resid = self.trend_decomp(x_t)        # (B, N, pred_len), (B, N, T)
+        resid = resid.permute(0, 2, 1)                        # (B, T, N)
+        trend_forecast = trend_forecast.permute(0, 2, 1)      # (B, pred_len, N)
 
-        dec_out, attns = self.encoder(x_enc)
+        resid = F.pad(resid, (0, 0, 0, self.pred_len))
+
+        resid_out, attns = self.encoder(resid)
+
+        dec_out = resid_out + trend_forecast
 
         if self.use_norm:
             dec_out = dec_out * stdev.squeeze(1).unsqueeze(1)
