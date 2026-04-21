@@ -12,3 +12,10 @@ Format:
   ---
 
 ---
+
+## dc2269f — baseline (starting point)  [structural]
+**Hypothesis:** N/A — initial architecture
+**Change:** Space-time signed attention with causal TCN embedding, 1 stack
+**Result:** MSE — → 0.1998 ✓ improved
+**Status:** done
+---
