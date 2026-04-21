@@ -96,3 +96,10 @@ Format:
 **Result:** MSE 0.0985 → 0.1066 ✗ no improvement (FFT doubles epoch time: only 4 epochs vs 7)
 **Status:** exhausted
 ---
+
+## 3930551 — stage3 TCN multi-dilation (1,2,4)  [structural]
+**Hypothesis:** Wider receptive field in stage3 via dilations (1,2,4) captures longer-range dependencies before patch extraction.
+**Change:** Stage3 TCNBlock dilations changed from (1,) to (1,2,4); each dilation adds depthwise conv + GELU + dropout.
+**Result:** MSE 0.0985 → 0.1039 ✗ no improvement (3 dilation levels slow epoch to ~130s; only 4 epochs in 600s vs 7)
+**Status:** exhausted
+---
