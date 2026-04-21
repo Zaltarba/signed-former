@@ -117,3 +117,10 @@ Format:
 **Result:** MSE 0.0961 → 0.0968 ✗ no improvement (16 epochs but less capacity; plateaued at vali 0.1037)
 **Status:** exhausted
 ---
+
+## 6551fb4 — learnable relative position bias in attention  [structural]
+**Hypothesis:** A learnable scalar bias per lag offset (0..9) gives the model a prior on temporal decay of attention scores.
+**Change:** Added pos_bias (10 params per layer) to scores before masking; lag_idx cached alongside causal mask.
+**Result:** MSE 0.0961 → 0.0968 ✗ no improvement (11 epochs, plateaued at same level as e_layers=2 baseline)
+**Status:** exhausted
+---
