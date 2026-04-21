@@ -61,3 +61,17 @@ Format:
 **Result:** MSE 0.1094 → 0.1097 ✗ no improvement
 **Status:** exhausted
 ---
+
+## a152fb0 — n_stacks=2 multi-scale (patch_len 32+16)  [structural]
+**Hypothesis:** Two stacks at different temporal scales (29 and 62 patches) would capture both coarse and fine-grained patterns.
+**Change:** n_stacks=2 in experiment.sh; second stack uses patch_len=16, stride=3 (2108 tokens).
+**Result:** MSE 0.1094 → 0.1180 ✗ no improvement (only 1 epoch: 2806s/epoch >> 600s budget)
+**Status:** exhausted (second stack too expensive; needed 1 epoch only)
+---
+
+## ff4635c — stride 6→16 for more training epochs  [parametric]
+**Hypothesis:** With stride=6 the model only gets 2 epochs in 600s; stride=16 reduces tokens 986→408, giving 3+ epochs which should improve convergence.
+**Change:** stride 6→16 in experiment.sh; n_patches 29→12 per series, 408 vs 986 tokens. Each epoch ~80s vs ~365s.
+**Result:** MSE 0.1094 → 0.1066 ✓ improved (3 epochs completed in 258s)
+**Status:** open (try stride=32 for even more epochs, or stride=8 for more temporal resolution)
+---
