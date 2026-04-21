@@ -1,6 +1,8 @@
 #!/bin/bash
 set -e
 
+source "$(dirname "$0")/.venv/bin/activate" 2>/dev/null || true
+
 COMMIT=$(git rev-parse --short HEAD)
 DESCRIPTION=$(git log -1 --pretty=%s)
 
@@ -18,7 +20,7 @@ if python run.py \
   --enc_in 170 \
   --dec_in 170 \
   --c_out 170 \
-  --d_model 32 \
+  --d_model 128 \
   --n_heads 8 \
   --e_layers 3 \
   --d_ff 32 \
