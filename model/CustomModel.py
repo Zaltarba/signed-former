@@ -379,8 +379,8 @@ class Model(nn.Module):
         self.enc_in = configs.enc_in
         self.n_stacks = getattr(configs, 'n_stacks', 3)
 
-        self.trend_decomp_slow = DLinearForecast(configs.seq_len, configs.pred_len, kernel_size=25)
-        self.trend_decomp_fast = DLinearForecast(configs.seq_len, configs.pred_len, kernel_size=5)
+        self.trend_decomp_slow = DLinearForecast(configs.seq_len, configs.pred_len, kernel_size=97)
+        self.trend_decomp_fast = DLinearForecast(configs.seq_len, configs.pred_len, kernel_size=25)
 
         self.encoder = StackedEncoder(
             n_stacks=self.n_stacks,
@@ -407,12 +407,12 @@ class Model(nn.Module):
             stdev = (x_enc.var(dim=1, keepdim=True, correction=0) + 1e-5).sqrt()
             x_enc = x_enc / stdev
 
-        # Two-level decomposition: slow trend + fast trend; encoder handles residual
-        x_t = x_enc.permute(0, 2, 1)                             # (B, N, T)
-        slow_f, resid1 = self.trend_decomp_slow(x_t)             # (B, N, pred_len), (B, N, T)
-        fast_f, resid2 = self.trend_decomp_fast(resid1)          # (B, N, pred_len), (B, N, T)
-        resid = resid2.permute(0, 2, 1)                          # (B, T, N)
-        trend_forecast = (slow_f + fast_f).permute(0, 2, 1)     # (B, pred_len, N)
+        # Two-level decomp: very slow (k=97) + medium (k=25); encoder handles fine residuals
+        x_t = x_enc.permute(0, 2, 1)
+        slow_f, resid1 = self.trend_decomp_slow(x_t)
+        fast_f, resid2 = self.trend_decomp_fast(resid1)
+        resid = resid2.permute(0, 2, 1)
+        trend_forecast = (slow_f + fast_f).permute(0, 2, 1)
 
         resid = F.pad(resid, (0, 0, 0, self.pred_len))
 
