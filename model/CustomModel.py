@@ -149,10 +149,8 @@ class SignedAttention(nn.Module):
         self.output_attention = output_attention
         self.attention_window = attention_window
         self._cached_mask = None
-        self._cached_lag_idx = None
         self._cached_key = None
         self.log_scale = nn.Parameter(torch.tensor(np.log(2.0)))
-        self.pos_bias = nn.Parameter(torch.zeros(attention_window))
 
     def _get_causal_mask(self, channels: int, attention_window: int, device: torch.device):
         key = (self.n_patches, channels, device)
@@ -161,11 +159,9 @@ class SignedAttention(nn.Module):
             pid = torch.arange(self.n_patches, device=device).repeat_interleave(channels)
             diff = pid.unsqueeze(0) - pid.unsqueeze(1)  # q_pid - k_pid
             mask = (diff <= 0) | (diff >= attention_window)
-            lag_idx = diff.clamp(0, attention_window - 1)
             self._cached_mask = mask.unsqueeze(0).unsqueeze(0)  # (1, 1, L, L)
-            self._cached_lag_idx = lag_idx.unsqueeze(0).unsqueeze(0)  # (1, 1, L, L)
             self._cached_key = key
-        return self._cached_mask, self._cached_lag_idx
+        return self._cached_mask
 
     @staticmethod
     def _standardize(t):
@@ -181,8 +177,7 @@ class SignedAttention(nn.Module):
         scores = torch.matmul(q, k.transpose(-1, -2))
         scale = self.log_scale.exp().clamp(1, 30.0) / sqrt(D)
 
-        cmask, lag_idx = self._get_causal_mask(channels, self.attention_window, queries.device)
-        scores = scores + self.pos_bias[lag_idx]  # learnable lag-distance bias
+        cmask = self._get_causal_mask(channels, self.attention_window, queries.device)
         pos = scores.masked_fill(cmask, -1e4)
         neg = (-scores).masked_fill(cmask, -1e4)
 
