@@ -108,5 +108,12 @@ Format:
 **Hypothesis:** Fewer attention layers reduce per-epoch compute, fitting ~14 epochs in 600s vs 7, improving convergence.
 **Change:** e_layers 3→2 in experiment.sh; epoch time drops to ~50s, 10 epochs completed in budget.
 **Result:** MSE 0.0985 → 0.0961 ✓ improved (10 epochs completed, best at epoch 10, vali 0.1023)
-**Status:** open (e_layers=1 may allow even more epochs; worth trying)
+**Status:** exhausted (e_layers=1 gave MSE 0.0968, worse; sweet spot is e_layers=2)
+---
+
+## 9a30d72 — e_layers 1 (parametric sweep)  [parametric]
+**Hypothesis:** Single attention layer allows ~16 epochs in budget, potentially better convergence via more training rounds.
+**Change:** e_layers 2→1 in experiment.sh; train_epochs 7→20 (time_budget is binding constraint anyway).
+**Result:** MSE 0.0961 → 0.0968 ✗ no improvement (16 epochs but less capacity; plateaued at vali 0.1037)
+**Status:** exhausted
 ---
