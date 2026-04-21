@@ -12,16 +12,16 @@ if python run.py \
   --root_path ./dataset/PEMS/ \
   --data_path PEMS08.npz \
   --features M \
-  --seq_len 96 \
+  --seq_len 192 \
   --label_len 0 \
   --pred_len 12 \
   --enc_in 170 \
   --dec_in 170 \
   --c_out 170 \
-  --d_model 512 \
+  --d_model 32 \
   --n_heads 8 \
   --e_layers 3 \
-  --d_ff 512 \
+  --d_ff 32 \
   --dropout 0.1 \
   --embed timeF \
   --train_epochs 3 \
@@ -29,8 +29,8 @@ if python run.py \
   --learning_rate 0.001 \
   --patience 3 \
   --keep_ratio 0.2 \
-  --time_budget 300 \
-  --patch_len 12 \
+  --time_budget 600 \
+  --patch_len 32 \
   --stride 6 \
   --n_stacks 1 \
   --attention_window 10 \

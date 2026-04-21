@@ -87,7 +87,7 @@ if __name__ == '__main__':
     parser.add_argument('--partial_start_index', type=int, default=0, help='the start index of variates for partial training, '
                                                                            'you can select [partial_start_index, min(enc_in + partial_start_index, N)]')
     parser.add_argument('--keep_ratio', type=float, default=1.0, help='fraction of variates (N axis) to keep, e.g. 0.1 = first 10%%')
-    parser.add_argument('--time_budget', type=int, default=300, help='wall-clock training budget in seconds')
+    parser.add_argument('--time_budget', type=int, default=600, help='wall-clock training budget in seconds')
     parser.add_argument('--patch_len', type=int, default=16, help='patch length for patch-based embedding')
     parser.add_argument('--stride', type=int, default=8, help='stride between patches')
     parser.add_argument('--n_stacks', type=int, default=3, help='number of N-BEATS-style stacks')

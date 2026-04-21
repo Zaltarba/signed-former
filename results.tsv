@@ -1,3 +1,5 @@
 commit_hash	MSE	gpu_mem_gb	status	description
 993f65b	N/A	0.0	crash	Add uv project setup and fix NumPy 2.0 compatibility
 993f65b	N/A	0.0	crash	Add uv project setup and fix NumPy 2.0 compatibility
+dc2269f	0.287414	19.62	ok	Setup auto-research loop infrastructure
+dc2269f	0.199784	19.19	ok	Setup auto-research loop infrastructure

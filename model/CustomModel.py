@@ -103,10 +103,9 @@ class TimeEmbedding(nn.Module):
             kernel_size=8,
             dropout=dropout,
         )
-        self.pre_patch_norm = nn.RMSNorm(seq_len)
         self.dropout = nn.Dropout(dropout)
 
-    def forward(self, x: torch.Tensor, x_mark=None, keep_idx=None):
+    def forward(self, x: torch.Tensor, x_mark=None):
         """x: (B, T, N) → (B, n_heads, n_patches*N, patch_len)"""
         x = x.permute(0, 2, 1)                   # (B, N, T)
         B, N, T = x.shape
@@ -143,7 +142,7 @@ class SignedAttention(nn.Module):
     def __init__(self, n_patches: int, patch_len: int, n_heads: int,
                  attention_dropout: float = 0.1,
                  output_attention: bool = False,
-                 proj_kernel: int = 3, attention_window: int = 10):
+                 attention_window: int = 10):
         super().__init__()
         self.n_patches = n_patches
         self.dropout = nn.Dropout(attention_dropout)
@@ -151,31 +150,7 @@ class SignedAttention(nn.Module):
         self.attention_window = attention_window
         self._cached_mask = None
         self._cached_key = None
-
-        self.q_proj = nn.Sequential(
-            nn.Conv1d(n_heads, n_heads, kernel_size=proj_kernel,
-                      padding=0, groups=n_heads, bias=False),
-            nn.GELU(),
-        )
-        self.k_proj = nn.Sequential(
-            nn.Conv1d(n_heads, n_heads, kernel_size=proj_kernel,
-                      padding=0, groups=n_heads, bias=False),
-            nn.GELU(),
-        )
-        self.v_proj = nn.Sequential(
-            nn.Conv1d(n_heads, n_heads, kernel_size=proj_kernel,
-                      padding=0, groups=n_heads, bias=False),
-            nn.GELU(),
-        )
-
-        self.qk_pad = proj_kernel - 1
-        self.v_pad = proj_kernel - 1
-        self.v_norm = nn.RMSNorm(patch_len)
         self.log_scale = nn.Parameter(torch.tensor(np.log(2.0)))
-
-        with torch.no_grad():
-            for q_param, k_param in zip(self.q_proj.parameters(), self.k_proj.parameters()):
-                k_param.copy_(q_param)
 
     def _get_causal_mask(self, channels: int, attention_window: int, device: torch.device):
         key = (self.n_patches, channels, device)
@@ -192,30 +167,6 @@ class SignedAttention(nn.Module):
     def _standardize(t):
         t = t - t.mean(dim=-1, keepdim=True)
         return t / (t.std(dim=-1, keepdim=True, correction=0) + 1e-4)
-
-    def _proj_q(self, x):
-        """x: (B, H, L, D) → residual causal conv along D."""
-        B, H, L, D = x.shape
-        r = x.permute(0, 2, 1, 3).reshape(B * L, H, D)
-        r = F.pad(r, (self.qk_pad, 0))
-        r = self.q_proj(r)
-        return x + r.reshape(B, L, H, D).permute(0, 2, 1, 3)
-
-    def _proj_k(self, x):
-        """x: (B, H, L, D) → residual causal conv along D."""
-        B, H, L, D = x.shape
-        r = x.permute(0, 2, 1, 3).reshape(B * L, H, D)
-        r = F.pad(r, (self.qk_pad, 0))
-        r = self.k_proj(r)
-        return x + r.reshape(B, L, H, D).permute(0, 2, 1, 3)
-
-    def _proj_v(self, x):
-        """x: (B, H, L, D) → residual causal conv along D, normalised."""
-        B, H, L, D = x.shape
-        r = x.permute(0, 2, 1, 3).reshape(B * L, H, D)
-        r = F.pad(r, (self.v_pad, 0))
-        r = self.v_proj(r)
-        return self.v_norm(x + r.reshape(B, L, H, D).permute(0, 2, 1, 3))
 
     def forward(self, queries, keys, values, attn_mask=None):
         B, H, L, D = queries.shape
@@ -362,14 +313,14 @@ class StackedEncoder(nn.Module):
         ])
         self.forecast_weights = nn.Parameter(torch.ones(n_stacks))
 
-    def forward(self, x, attn_mask=None, keep_idx=None):
+    def forward(self, x, attn_mask=None):
         """x: (B, seq_len, N) → (B, pred_len, N), attns"""
         residual = x
         forecasts = []
         all_attns = []
 
         for emb, stack in zip(self.embeddings, self.stacks):
-            tokens = emb(residual, keep_idx=keep_idx)
+            tokens = emb(residual)
             forecast_i, residual, attns = stack(tokens, residual, attn_mask)
             forecasts.append(forecast_i)
             all_attns.append(attns)
@@ -427,7 +378,6 @@ class Model(nn.Module):
         self.n_heads = configs.n_heads
         self.enc_in = configs.enc_in
         self.n_stacks = getattr(configs, 'n_stacks', 3)
-        self.keep_ratio = getattr(configs, 'keep_ratio', 1.0)
 
         self.encoder = StackedEncoder(
             n_stacks=self.n_stacks,
@@ -447,34 +397,16 @@ class Model(nn.Module):
         n_params = sum(p.numel() for p in self.parameters())
         print(f"Model parameters: {n_params:,}")
 
-    @staticmethod
-    def _subsample_channels(x, ratio):
-        B, T, N = x.shape
-        k = max(1, int(N * ratio))
-        idx = torch.randperm(N, device=x.device)[:k]
-        return x[:, :, idx], idx
-
-    def forecast(self, x_enc_all, x_mark_enc=None, x_dec=None, x_mark_dec=None):
+    def forecast(self, x_enc, x_mark_enc=None, x_dec=None, x_mark_dec=None):
         if self.use_norm:
-            means = x_enc_all.mean(dim=1, keepdim=True).detach()
-            x_enc_all = x_enc_all - means
-            stdev = (x_enc_all.var(dim=1, keepdim=True, correction=0) + 1e-5).sqrt()
-            x_enc_all = x_enc_all / stdev
-
-        if self.training and self.keep_ratio < 1:
-            x_enc, keep_idx = self._subsample_channels(x_enc_all, self.keep_ratio)
-        else:
-            x_enc, keep_idx = x_enc_all, None
+            means = x_enc.mean(dim=1, keepdim=True).detach()
+            x_enc = x_enc - means
+            stdev = (x_enc.var(dim=1, keepdim=True, correction=0) + 1e-5).sqrt()
+            x_enc = x_enc / stdev
 
         x_enc = F.pad(x_enc, (0, 0, 0, self.pred_len))
 
-        dec_out, attns = self.encoder(x_enc, keep_idx=keep_idx)
-
-        if self.training and keep_idx is not None:
-            full = torch.zeros(dec_out.shape[0], dec_out.shape[1],
-                               x_enc_all.shape[2], device=dec_out.device)
-            full[:, :, keep_idx] = dec_out
-            dec_out = full
+        dec_out, attns = self.encoder(x_enc)
 
         if self.use_norm:
             dec_out = dec_out * stdev.squeeze(1).unsqueeze(1)

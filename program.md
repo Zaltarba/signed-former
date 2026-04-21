@@ -20,8 +20,8 @@ keep_ratio:      0.2     # first 40 of 170 sensors used across train/val/test
 
 - Optimizer: Adam, lr=0.001
 - Batch size: 32
-- train_epochs: 2  (calibrate manually — increase if 5 min budget is not reached)
-- time_budget: 300  (seconds; hard stop at epoch boundary if epochs haven't finished)
+- train_epochs: 4  (calibrate manually — increase if 5 min budget is not reached)
+- time_budget: 600  (seconds; hard stop at epoch boundary if epochs haven't finished)
 - Loss: MSE
 - Early stopping patience: 3 (whichever triggers first: early stopping or time budget)
 - Normalization: use_norm=True
@@ -42,14 +42,32 @@ The agent may also edit the corresponding args in `experiment.sh` to change `pat
 
 Do not touch: optimizer, learning rate, batch size, keep_ratio, data pipeline, any file other than `model/CustomModel.py` and `experiment.sh`.
 
+## Target
+
+A good MSE on PEMS08 is **≤ 0.08**. Use this as the long-term reference point — not just "better than current best".
+
 ## Iteration Procedure
 
-1. Read `results.tsv` and `git log --oneline -20` — identify which changes improved MSE
-2. Form a hypothesis: one focused change and why it might help
-3. Implement it in `model/CustomModel.py`
-4. Run `bash experiment.sh`
-5. Record result in `results.tsv`
-6. Keep commit if MSE improved over best so far, otherwise `git reset --hard HEAD~1`
+1. Read `ideas_log.txt` (last 5 entries only) — identify which changes improved MSE; do not use `git log`
+2. Count how many iterations have been run (from `results.tsv`). If fewer than 10, prioritise **structural changes** (new mechanisms). After iteration 10, shift toward exploiting what worked.
+3. Before picking a new hypothesis, ask: has a recent idea been tried with only one hyperparameter setting? If so, consider a variant before moving on — some ideas need tuning to work, not discarding.
+4. Form a hypothesis: one focused change and why it might help. Label it as either:
+   - **structural** — a new mechanism; pick patch_len and lookback window that make sense for the idea, not just defaults
+   - **parametric** — a hyperparameter sweep (plan 2–3 values across a range before concluding)
+5. Implement it in `model/CustomModel.py` and/or `experiment.sh`
+6. Run the experiment (see CLAUDE.md for the exact command)
+7. Record result in `results.tsv` and append to `ideas_log.txt`
+8. Keep commit if MSE improved by ≥ 0.001 over best so far, otherwise `git reset --hard HEAD~1`
+
+### When to stop exploring a hypothesis
+
+- **Structural change** with no improvement on one run → discard, move on
+- **Parametric idea** (patch_len, stride, attention_window, d_model, etc.) → try at least 2–3 values across a reasonable range before discarding; note in `ideas_log.txt` which values were tried
+- If all variants of a parametric idea failed, mark it as exhausted in `ideas_log.txt` so it is not revisited
+
+### Scaling stacks
+
+Before increasing `n_stacks`, verify the idea works at smaller scale first: run 1 stack, then 2, before trying 3+. Scaling without a working single-stack baseline wastes budget.
 
 ## Baseline
 
@@ -60,40 +78,56 @@ Reference: `model/iTransformer.py`
 
 ## Research Directions
 
-### Core design philosophy
+### Goal
 
-Build a **lightweight Transformer** where every intermediate representation remains interpretable as a time series. Parameter count should stay low; prefer causal convolutions over large linear projections.
+Design a **general-purpose lightweight Transformer** for multivariate time series, validated on PEMS08. The architecture should generalise beyond this dataset — avoid PEMS-specific hacks.
 
-Key invariant: a token of shape `(n_heads, patch_len)` must be a causally-constructed segment of a time series — not a generic embedding vector. Each head represents an independent view of the same series segment.
+### Core architecture: space-time attention
 
-### Token construction
+Each variate is split into `n_patches` patch tokens → the full sequence has `n_variates × n_patches` tokens. Attention is **non-factorized**: all tokens attend jointly in a single operation, mixing both the time and variate dimensions simultaneously. Do not factor into separate temporal + cross-variate attention passes — this is a hard constraint.
 
-A patch token for variate `i` at time `t` is built from `patch_len` consecutive time steps ending at `t`, extracted causally (no future leakage). Temporal structure inside the token must be preserved — construction via causal conv is preferred over a raw linear projection.
+A **causal mask** restricts each token at time patch `t` to attending only to tokens at time patches `≤ t` (across all variates). `attention_window` limits how many past time patches are visible. Whether to use strict `< t` (excluding same-time-patch cross-variate attention) is an open research question worth exploring.
 
-### Attention as a correlation matrix
+### Key research insight: lead-lag correlation matrix
 
-The attention matrix should be interpretable as a **signed cross-variate correlation matrix**:
-- Positive attention weight = positive correlation between two variate patches
-- Negative attention weight = negative correlation
-- This motivates the signed attention: `softmax(+s) - softmax(-s)`
+The attention matrix over `n_variates × n_patches` tokens is the central object of interest. Viewed as variate×variate blocks at each time offset `k`, it gives a **series of cross-variate correlation matrices at lag `k`**. This is the lead-lag correlation structure: block `(i, j, k)` represents how variate `i` at time `t` correlates with variate `j` at time `t-k`. Preserving this interpretability is non-negotiable.
 
-Correlation is best estimated on **detrended / residual series** — apply trend decomposition before attention if possible, run attention on the residual.
+### Hard constraints
 
-### Lead-lag relationships
+- **Parameter count ≤ 50,000.** Verify with `sum(p.numel() for p in model.parameters())` before committing.
+- **Non-factorized joint space-time attention.** No separate temporal / cross-variate passes.
+- **Attention matrix interpretable as a lead-lag correlation structure** (see above). Every token must be a causally-constructed time series segment — not a generic embedding vector.
+- **No future leakage.** Patch tokens built from time steps ending at `t` only.
 
-The model should be able to capture **lead-lag** structure: variate A at time `t` predicts variate B at time `t+k`. This requires the attention to operate across patches at different time offsets, not just within the same patch position.
+### Design philosophy
+
+Prefer causal convolutions over large linear projections. Each attention head represents an independent view of the same series segment (shape `(n_heads, patch_len)`). Keep every intermediate representation interpretable as a time series.
+
+### Attention
+
+Signed attention `softmax(+s) - softmax(-s)` is the preferred default — it maps naturally to positive/negative correlations. Use it unless a clearly better signed alternative is found. Correlation is best estimated on detrended / residual series — apply trend decomposition before attention when possible.
+
+### Improvement threshold
+
+A change is only worth keeping if **MSE improves by at least 0.001** over the current best. Smaller deltas are noise given the training budget — reset and try something else.
+
+### Hypotheses to explore (unordered)
+
+**Architectural / structural:**
+- Strict vs. non-strict causal mask: `< t` vs. `≤ t` for same-time-patch cross-variate attention
+- Head specialisation: different heads capture correlations at different lags
+- Parameter reduction: don't use Linear projectors but  convolution  where possible
+- Causal patch tokens via dilated conv
+
+**Signal decomposition (good directions to explore):**
+- Detrend before attention: moving-average trend removal, run signed attention on residuals, forecast trend separately
+- FFT token embedding: represent each patch as its frequency spectrum (magnitude + phase) before attention
+- Wavelet token embedding: multi-resolution patch decomposition (e.g. Haar or db1 wavelet) to capture structure at several scales
+- Mel-log spectrogram embedding: apply mel filterbank to patches, use log-compressed spectral energy as token features — good for capturing periodic patterns in traffic data
 
 ### Reference papers
 
 - **iTransformer**: variate-as-token, attention over variates
-- **PatchTST**: patch-as-token, attention over time
+- **PatchTST**: patch-as-token, attention over time (channel-independent)
 - **N-BEATS**: stacked residual forecasting blocks with backcast/forecast decomposition
 - **CMoS**: correlation-based multivariate structure
-
-### Hypotheses to explore (priority order)
-
-1. Causal patch tokens built via dilated conv (current) — verify they outperform a flat linear patch
-2. Detrend before attention: run signed attention on residuals, add trend forecast separately
-3. Lead-lag encoding: shift the key/query patch index by `k` steps to explicitly model lagged correlations
-4. Head specialisation: encourage different heads to capture correlations at different temporal scales (short vs. long lag)
-5. Parameter reduction: replace Linear projectors with depthwise conv where possible 

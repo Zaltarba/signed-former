@@ -17,15 +17,42 @@ uv sync          # install dependencies
 Invoke with `/loop`. Each iteration:
 
 1. Read `program.md` for dataset config and constraints
-2. Read `results.tsv` and `git log --oneline -20` to understand what has been tried
+2. Read `ideas_log.txt` (not git log) to understand what has been tried and what showed promise — this is the primary context memory
 3. Read `model/CustomModel.py` for the current architecture
-4. Propose one architectural change based on what showed promise (see `program.md`)
+4. Propose one architectural change based on what showed promise
 5. Edit `model/CustomModel.py`
-6. Run `bash experiment.sh` (trains on first `keep_ratio` variates; stops at epoch boundary when `time_budget` is hit or early stopping triggers — whichever comes first)
-7. Parse MSE from stdout: look for the line `mse:{value}, mae:{value}` printed by `test()`. This MSE is evaluated on the test set using the checkpoint from the epoch with the best validation loss — not the last epoch. If crash → log failure, `git checkout model/CustomModel.py`, retry with a different change
+6. Run the experiment with output captured — use exactly these two commands:
+   ```bash
+   bash experiment.sh > run.log 2>&1; echo "exit:$?"
+   grep -E "mse:|mae:|Epoch" run.log | tail -10
+   ```
+   All training logs go to `run.log`; only the filtered tail is read into context.
+7. Parse MSE from the grep output: look for the line `mse:{value}, mae:{value}` printed by `test()`. If `exit:1` was returned → crash: log failure, `git checkout model/CustomModel.py`, retry with a different change. This MSE is evaluated on the test set using the checkpoint from the epoch with the best validation loss — not the last epoch.
 8. If MSE improved vs. best in `results.tsv`: keep the commit
 9. If MSE did not improve: `git reset --hard HEAD~1`
 10. Append one row to `results.tsv` — **the agent must write this row on success**, as `experiment.sh` only logs crash rows automatically
+11. **Append one entry to `ideas_log.txt`** using the format defined below — always, whether success or failure
+12. Run `bash scripts/push_tracking.sh` — pushes `results.tsv` and `ideas_log.txt` to the `results-tracking` branch so progress is visible remotely; this never affects the current branch or working tree
+
+## ideas_log.txt Format and Rules
+
+Each entry follows this exact format:
+
+```
+## <commit_hash> — <short title>
+**Hypothesis:** <why this change might help, in one sentence>
+**Change:** <what was changed conceptually — no code, just the idea>
+**Result:** MSE <before> → <after> <✓ improved | ✗ no improvement | ✗ crash>
+---
+```
+
+**Context discipline — strictly follow these rules:**
+- Do **not** read `git log` at any point; `ideas_log.txt` is the sole history source
+- Do **not** run `git show`, `git diff`, or any command that retrieves past code — the only code context is the current `model/CustomModel.py`
+- Do **not** re-read past entries in full; only scan the last 5 entries for recent context, and the best result line for the current champion MSE
+- Check the **Status** field of recent entries: `open` means the idea has untried parameter values and should be continued before moving on; `exhausted` means all variants failed and it should not be revisited
+- Keep entries short: hypothesis and change descriptions must each fit in one sentence
+- Never rewrite or delete past entries — append only
 
 ## File Roles
 
@@ -35,7 +62,10 @@ Invoke with `/loop`. Each iteration:
 | `model/CustomModel.py` | The **only** file the agent modifies |
 | `experiment.sh` | Launches timed training run |
 | `results.tsv` | Append-only experiment log |
+| `ideas_log.txt` | Append-only semantic memory — hypothesis, conceptual change, outcome per iteration |
 | `model/iTransformer.py` | Reference baseline — never modified |
+| `run.log` | Full training stdout/stderr — never read directly; only via `grep \| tail` |
+| `scripts/push_tracking.sh` | Pushes `results.tsv` + `ideas_log.txt` to `results-tracking` branch — run after every iteration |
 
 ## results.tsv Format
 
@@ -48,4 +78,4 @@ Tab-separated columns: `commit_hash`, `MSE`, `gpu_mem_gb`, `status`, `descriptio
 - One commit per attempted change, with a short message describing the hypothesis
 - On improvement: commit stays
 - On no improvement or crash: `git reset --hard HEAD~1` — never amend, never force-push
-- Read `git log` and `results.tsv` together to calibrate next move; early iterations explore broadly, later ones exploit what worked
+- Read `ideas_log.txt` (last 5 entries) to calibrate next move — never `git log`; early iterations explore broadly, later ones exploit what worked

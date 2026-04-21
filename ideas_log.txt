@@ -1,0 +1,14 @@
+# Ideas Log
+
+Semantic memory for the auto-research loop. One entry per attempt.
+Read only the last 5 entries for context. Append only — never rewrite.
+
+Format:
+  ## <commit_hash> — <short title>  [structural | parametric]
+  **Hypothesis:** <why this change might help>
+  **Change:** <conceptual description, no code; for parametric, note the value tried>
+  **Result:** MSE <before> → <after> ✓ improved | ✗ no improvement | ✗ crash
+  **Status:** open (more values to try) | exhausted | done
+  ---
+
+---
