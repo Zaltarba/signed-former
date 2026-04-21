@@ -246,7 +246,7 @@ class Stack(nn.Module):
         self.attn_drops = nn.ModuleList([nn.Dropout(dropout) for _ in range(e_layers)])
         self.attn_norms = nn.ModuleList([nn.RMSNorm(patch_len) for _ in range(e_layers)])
         self.ffns = nn.ModuleList([
-            ConvFFN(n_heads, patch_len, expand=4, kernel_size=3, dropout=dropout)
+            ConvFFN(n_heads, patch_len, expand=2, kernel_size=3, dropout=dropout)
             for _ in range(e_layers)
         ])
 
@@ -412,7 +412,8 @@ class Model(nn.Module):
         resid = resid.permute(0, 2, 1)                        # (B, T, N)
         trend_forecast = trend_forecast.permute(0, 2, 1)      # (B, pred_len, N)
 
-        resid = F.pad(resid, (0, 0, 0, self.pred_len))
+        last_val = resid[:, -1:, :].expand(-1, self.pred_len, -1)
+        resid = torch.cat([resid, last_val], dim=1)
 
         resid_out, attns = self.encoder(resid)
 
