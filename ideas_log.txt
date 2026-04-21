@@ -138,3 +138,10 @@ Format:
 **Result:** MSE 0.0961 → 0.0973 ✗ no improvement (wider FFN didn't help; same 10 epochs)
 **Status:** exhausted
 ---
+
+## 4c2b574 — last-value persistence padding for future tokens  [structural]
+**Hypothesis:** Padding the future residual with the last known value (instead of zeros) gives the encoder a better prior for future token features in traffic data (smooth, slow changes).
+**Change:** Replaced F.pad with last_val.expand; future tokens initialized to last residual value.
+**Result:** MSE 0.0961 → 0.0973 ✗ no improvement (similar to zero-padding for this architecture)
+**Status:** exhausted
+---
