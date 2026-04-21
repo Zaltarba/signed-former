@@ -24,3 +24,4 @@ b8630d4	0.098112	3.10	ok	Add 2-level Haar wavelet transform to patch tokens for 
 71ee5ee	0.095509	3.10	ok	Two-level DLinear: slow trend (k=25) + fast trend (k=5) before encoder
 b8907e1	0.099258	3.10	ok	Two-level DLinear k=97+k=25: very slow trend + medium trend before encoder
 b8907e1	0.115294	2.29	ok	Two-level DLinear k=97+k=25: very slow trend + medium trend before encoder
+ce2d687	0.109471	3.10	ok	Two-level DLinear k=25+k=9: medium-fast trend decomposition before encoder
