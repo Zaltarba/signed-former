@@ -105,15 +105,6 @@ class TimeEmbedding(nn.Module):
         )
         self.dropout = nn.Dropout(dropout)
 
-    @staticmethod
-    def _haar_2level(x):
-        """2-level Haar wavelet on last dim (must be length 32). x: (..., D)"""
-        a1 = (x[..., 0::2] + x[..., 1::2]) * 0.5   # (..., 16)
-        d1 = (x[..., 0::2] - x[..., 1::2]) * 0.5   # (..., 16)
-        a2 = (a1[..., 0::2] + a1[..., 1::2]) * 0.5  # (..., 8)
-        d2 = (a1[..., 0::2] - a1[..., 1::2]) * 0.5  # (..., 8)
-        return torch.cat([a2, d2, d1], dim=-1)        # (..., 32)
-
     def forward(self, x: torch.Tensor, x_mark=None):
         """x: (B, T, N) → (B, n_heads, n_patches*N, patch_len)"""
         x = x.permute(0, 2, 1)                   # (B, N, T)
@@ -133,7 +124,6 @@ class TimeEmbedding(nn.Module):
         patches = patches.permute(0, 2, 3, 1, 4)         # (B, H, P, N, D)
         patches = patches.reshape(B, self.n_heads, self.n_patches * N, self.patch_len)
 
-        patches = self._haar_2level(patches)              # multi-scale wavelet representation
         return self.dropout(patches)
 
 
@@ -389,7 +379,8 @@ class Model(nn.Module):
         self.enc_in = configs.enc_in
         self.n_stacks = getattr(configs, 'n_stacks', 3)
 
-        self.trend_decomp = DLinearForecast(configs.seq_len, configs.pred_len, kernel_size=25)
+        self.trend_decomp_slow = DLinearForecast(configs.seq_len, configs.pred_len, kernel_size=25)
+        self.trend_decomp_fast = DLinearForecast(configs.seq_len, configs.pred_len, kernel_size=5)
 
         self.encoder = StackedEncoder(
             n_stacks=self.n_stacks,
@@ -416,11 +407,12 @@ class Model(nn.Module):
             stdev = (x_enc.var(dim=1, keepdim=True, correction=0) + 1e-5).sqrt()
             x_enc = x_enc / stdev
 
-        # Decompose into trend forecast + residual; encoder handles residual
-        x_t = x_enc.permute(0, 2, 1)                         # (B, N, T)
-        trend_forecast, resid = self.trend_decomp(x_t)        # (B, N, pred_len), (B, N, T)
-        resid = resid.permute(0, 2, 1)                        # (B, T, N)
-        trend_forecast = trend_forecast.permute(0, 2, 1)      # (B, pred_len, N)
+        # Two-level decomposition: slow trend + fast trend; encoder handles residual
+        x_t = x_enc.permute(0, 2, 1)                             # (B, N, T)
+        slow_f, resid1 = self.trend_decomp_slow(x_t)             # (B, N, pred_len), (B, N, T)
+        fast_f, resid2 = self.trend_decomp_fast(resid1)          # (B, N, pred_len), (B, N, T)
+        resid = resid2.permute(0, 2, 1)                          # (B, T, N)
+        trend_forecast = (slow_f + fast_f).permute(0, 2, 1)     # (B, pred_len, N)
 
         resid = F.pad(resid, (0, 0, 0, self.pred_len))
 
