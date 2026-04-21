@@ -151,6 +151,7 @@ class SignedAttention(nn.Module):
         self._cached_mask = None
         self._cached_key = None
         self.log_scale = nn.Parameter(torch.tensor(np.log(2.0)))
+        self.qk_feature_scale = nn.Parameter(torch.ones(patch_len))
 
     def _get_causal_mask(self, channels: int, attention_window: int, device: torch.device):
         key = (self.n_patches, channels, device)
@@ -172,7 +173,9 @@ class SignedAttention(nn.Module):
         B, H, L, D = queries.shape
         channels = L // self.n_patches
 
-        q, k, v = queries, keys, values
+        q = queries * self.qk_feature_scale
+        k = keys * self.qk_feature_scale
+        v = values
 
         scores = torch.matmul(q, k.transpose(-1, -2))
         scale = self.log_scale.exp().clamp(1, 30.0) / sqrt(D)
