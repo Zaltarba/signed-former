@@ -26,3 +26,10 @@ Format:
 **Result:** MSE 0.1998 → 0.1143 ✓ improved
 **Status:** done
 ---
+
+## ee3e14a — non-strict causal mask (allow same-time-patch cross-variate attention)  [structural]
+**Hypothesis:** Contemporaneous cross-variate attention (tokens at same time patch attending to each other) could capture immediate spatial correlations in traffic data.
+**Change:** Changed causal mask from diff <= 0 to diff < 0, allowing tokens at the same time patch to attend each other across variates.
+**Result:** MSE 0.1143 → 0.1155 ✗ no improvement
+**Status:** exhausted
+---
