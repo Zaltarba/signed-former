@@ -25,3 +25,5 @@ b8630d4	0.098112	3.10	ok	Add 2-level Haar wavelet transform to patch tokens for 
 b8907e1	0.099258	3.10	ok	Two-level DLinear k=97+k=25: very slow trend + medium trend before encoder
 b8907e1	0.115294	2.29	ok	Two-level DLinear k=97+k=25: very slow trend + medium trend before encoder
 ce2d687	0.109471	3.10	ok	Two-level DLinear k=25+k=9: medium-fast trend decomposition before encoder
+4be440a	0.114131	3.10	ok	batch_size 32→64: halve epoch steps (no speedup, only 3 epochs)
+298adf7	0.112509	3.10	ok	Learnable variate embeddings in TimeEmbedding (84s/epoch, only 7 epochs)
