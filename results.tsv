@@ -1,3 +1,7 @@
 commit_hash	MSE	gpu_mem_gb	status	description
 993f65b	N/A	0.0	crash	Add uv project setup and fix NumPy 2.0 compatibility
 dc2269f	0.199784	19.19	ok	Setup auto-research loop infrastructure
+e7939ea	0.114277	19.19	ok	Add trend decomposition: DLinearForecast separates trend, encoder handles residual
+ee3e14a	0.115549	19.19	ok	Test non-strict causal mask: allow same-time-patch cross-variate attention
+f415009	N/A	0.0	crash	Head specialization: per-head log-spaced attention windows (venv not activated)
+f415009	0.113367	19.22	ok	Head specialization: per-head log-spaced attention windows [1..20] for lag diversity

@@ -27,9 +27,16 @@ Format:
 **Status:** done
 ---
 
-## ee3e14a — non-strict causal mask (allow same-time-patch cross-variate attention)  [structural]
-**Hypothesis:** Contemporaneous cross-variate attention (tokens at same time patch attending to each other) could capture immediate spatial correlations in traffic data.
-**Change:** Changed causal mask from diff <= 0 to diff < 0, allowing tokens at the same time patch to attend each other across variates.
+## ee3e14a — non-strict causal mask  [structural]
+**Hypothesis:** Contemporaneous cross-variate attention (same time patch) could capture immediate spatial correlations in traffic data.
+**Change:** Changed causal mask from diff <= 0 to diff < 0, allowing same-time-patch tokens to attend each other across variates.
 **Result:** MSE 0.1143 → 0.1155 ✗ no improvement
+**Status:** exhausted
+---
+
+## f415009 — head specialization with per-head log-spaced windows  [structural]
+**Hypothesis:** Different heads specializing at different lags (windows [1..20]) would capture multi-scale correlations without adding parameters.
+**Change:** Replaced single shared attention_window with per-head log-spaced windows; mask shape (1,H,L,L) instead of (1,1,L,L).
+**Result:** MSE 0.1143 → 0.1134 ✗ no improvement (delta 0.0009, below 0.001 threshold)
 **Status:** exhausted
 ---
