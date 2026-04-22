@@ -338,32 +338,24 @@ class StackedEncoder(nn.Module):
 # 6.  FULL MODEL
 # ─────────────────────────────────────────────────────────────────────
 
-class MovingAvg(nn.Module):
-    """Moving average for trend decomposition."""
-    def __init__(self, kernel_size: int):
-        super().__init__()
-        self.kernel_size = kernel_size
-        self.avg = nn.AvgPool1d(kernel_size=kernel_size, stride=1,
-                                padding=(kernel_size - 1) // 2)
-
-    def forward(self, x):
-        """x: (B, N, T) → (B, N, T)"""
-        return self.avg(x)[:, :, :x.shape[2]]
-
-
-class DLinearForecast(nn.Module):
-    """DLinear: decompose into trend + remainder, project trend separately."""
-    def __init__(self, seq_len: int, pred_len: int, kernel_size: int = 13):
+class FFTDetrend(nn.Module):
+    """Exact low-pass trend via real FFT: keep lowest n_bins frequency bins, reconstruct via iFFT.
+    Zero learnable parameters in the filter; trend forecast uses a single linear projection.
+    """
+    def __init__(self, seq_len: int, pred_len: int, n_bins: int = 5):
         super().__init__()
         self.seq_len = seq_len
-        self.decomp = MovingAvg(kernel_size)
+        self.n_bins = n_bins
         self.linear_trend = nn.Linear(seq_len, pred_len)
 
     def forward(self, x):
-        """x: (B, N, seq_len) → (B, N, pred_len), residual (B, N, seq_len)"""
-        trend = self.decomp(x)
+        """x: (B, N, seq_len) → trend_forecast (B, N, pred_len), residual (B, N, seq_len)"""
+        X = torch.fft.rfft(x, dim=-1)
+        X_low = torch.zeros_like(X)
+        X_low[..., :self.n_bins] = X[..., :self.n_bins]
+        trend = torch.fft.irfft(X_low, n=self.seq_len, dim=-1)
         resid = x - trend
-        return self.linear_trend(trend[:, :, -self.seq_len:]), resid
+        return self.linear_trend(trend), resid
 
 
 class Model(nn.Module):
@@ -382,7 +374,7 @@ class Model(nn.Module):
         self.enc_in = configs.enc_in
         self.n_stacks = getattr(configs, 'n_stacks', 3)
 
-        self.trend_decomp = DLinearForecast(configs.seq_len, configs.pred_len, kernel_size=25)
+        self.trend_decomp = FFTDetrend(configs.seq_len, configs.pred_len, n_bins=5)
 
         self.encoder = StackedEncoder(
             n_stacks=self.n_stacks,
