@@ -5,123 +5,60 @@ import numpy as np
 from math import sqrt, ceil
 
 # ─────────────────────────────────────────────────────────────────────
-# 1.  CONVOLUTION PRIMITIVES
-# ─────────────────────────────────────────────────────────────────────
-
-class CausalConv(nn.Module):
-    """Causal 1-D convolution. Supports both depthwise (in==out, grouped)
-    and channel-changing (1→d_model, etc.).
-    Input/Output: (B, C_in, T) → (B, C_out, T)
-    """
-
-    def __init__(self, in_channels: int, out_channels: int = None,
-                 kernel_size: int = 2, dilation: int = 1, bias: bool = False):
-        super().__init__()
-        out_channels = out_channels or in_channels
-        self.kernel_size = kernel_size
-        self.dilation = dilation
-        groups = in_channels if in_channels == out_channels else 1
-        self.conv = nn.Conv1d(
-            in_channels, out_channels, kernel_size,
-            padding=0, dilation=dilation, groups=groups, bias=bias,
-        )
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        left = self.dilation * (self.kernel_size - 1)
-        return self.conv(F.pad(x, (left, 0)))
-
-
-class ChannelMix(nn.Module):
-    """1×1 conv mixing channels at each time step.
-    (B, C_in, T) → (B, C_out, T)
-    """
-
-    def __init__(self, in_channels: int, out_channels: int, bias: bool = False):
-        super().__init__()
-        self.conv = nn.Conv1d(in_channels, out_channels, kernel_size=1, bias=bias)
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        return self.conv(x)
-
-
-class TCNBlock(nn.Module):
-    """Depthwise causal dilated convolutions + GELU + dropout.
-    No normalisation. Residual connection around the block.
-    Input/Output: (B, C, T)
-    """
-
-    def __init__(self, n_channels: int, dilations: tuple = (1, 2, 4),
-                 kernel_size: int = 2, dropout: float = 0.1):
-        super().__init__()
-        layers = []
-        for d in dilations:
-            layers.extend([
-                CausalConv(n_channels, kernel_size=kernel_size, dilation=d),
-                nn.GELU(),
-                nn.Dropout(dropout),
-            ])
-        self.net = nn.Sequential(*layers)
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        return self.net(x) + x
-
-
-# ─────────────────────────────────────────────────────────────────────
-# 2.  TIME EMBEDDING  (depthwise → channel-mix → depthwise)
+# 2.  TIME EMBEDDING  (single-stage causal conv embedding)
 # ─────────────────────────────────────────────────────────────────────
 
 class TimeEmbedding(nn.Module):
-    """Three-stage feature extraction per variate:
-
-    Stage 1 — Causal conv: 1 → d_model channels
-    Stage 2 — Channel-mix 1×1 conv: d_model → n_heads
-    Stage 3 — TCNBlock: refines each head independently
-
-    Then unfold into causal patches.
+    """Single-stage causal conv feature extraction per variate:
+    Directly projects 1 → n_heads channels via causal conv.
+    Then unfolds into causal patches.
     Output: (B, n_heads, n_patches * N, patch_len)
     """
 
     def __init__(self, seq_len: int, patch_len: int = 64,
                  stride: int = 32, n_heads: int = 8,
-                 d_model: int = 32, dropout: float = 0.1, enc_in: int = 1):
+                 dropout: float = 0.1, enc_in: int = 1,
+                 kernel_size: int = 12):
         super().__init__()
         self.patch_len = patch_len
         self.stride = stride
         self.n_heads = n_heads
-        self.d_model = d_model
-        self.n_patches = (seq_len - patch_len) // stride + 1
+        n_regular = (seq_len - patch_len) // stride + 1
+        self._tail_start = seq_len - patch_len        # start of last possible patch
+        self._has_tail = (seq_len - patch_len) % stride != 0
+        self.n_patches = n_regular + (1 if self._has_tail else 0)
+        self._causal_pad = kernel_size - 1
 
-        self.stage1 = nn.Sequential(
-            CausalConv(1, d_model, kernel_size=24, dilation=1),
-        )
-        self.stage2 = nn.Sequential(
-            ChannelMix(d_model, n_heads),
-        )
-        self.stage3 = TCNBlock(
-            n_channels=n_heads,
-            dilations=(1,),
-            kernel_size=8,
-            dropout=dropout,
-        )
+        self.conv = nn.Conv1d(1, n_heads, kernel_size, padding=0, bias=False)
         self.dropout = nn.Dropout(dropout)
 
+    def _causal_conv(self, x: torch.Tensor) -> torch.Tensor:
+        return self.conv(F.pad(x, (self._causal_pad, 0)))
+
+    def _unfold_patches(self, x: torch.Tensor) -> torch.Tensor:
+        """Standard forward unfold; appends a tail patch anchored at T-patch_len
+        when the sequence length is not stride-aligned, so no end data is lost."""
+        patches = x.unfold(dimension=2, size=self.patch_len, step=self.stride)
+        if self._has_tail:
+            tail = x[:, :, self._tail_start:self._tail_start + self.patch_len].unsqueeze(2)
+            patches = torch.cat([patches, tail], dim=2)
+        return patches
+
     def forward(self, x: torch.Tensor, x_mark=None):
-        """x: (B, T, N) → (B, n_heads, n_patches*N, patch_len)"""
+        """x: (B, T, N) → (B, n_heads, n_patches*N, patch_len)
+        Token layout is patch-major: tokens 0..N-1 are patch 0 for all N variates,
+        tokens N..2N-1 are patch 1 for all N variates, etc.
+        """
         x = x.permute(0, 2, 1)                   # (B, N, T)
         B, N, T = x.shape
         x = x.reshape(B * N, 1, T)               # (B*N, 1, T)
 
-        x = self.stage1(x)                        # (B*N, d_model, T)
-        x = self.stage2(x)                        # (B*N, n_heads, T)
-        x = self.stage3(x)                        # (B*N, n_heads, T)
-
-        # Causal patch extraction
-        x = torch.flip(x, dims=[2])
-        patches = x.unfold(dimension=2, size=self.patch_len, step=self.stride)
-        patches = patches.flip(dims=[3]).flip(dims=[2])
+        x = self._causal_conv(x)                  # (B*N, n_heads, T)
+        patches = self._unfold_patches(x)         # (B*N, n_heads, n_patches, patch_len)
 
         patches = patches.view(B, N, self.n_heads, self.n_patches, self.patch_len)
         patches = patches.permute(0, 2, 3, 1, 4)         # (B, H, P, N, D)
+        # reshape P*N as patch-major: [p0n0, p0n1, ..., p0nN, p1n0, ...]
         patches = patches.reshape(B, self.n_heads, self.n_patches * N, self.patch_len)
 
         return self.dropout(patches)
@@ -236,7 +173,8 @@ class Stack(nn.Module):
                  output_attention: bool = False, attention_window: int = 10):
         super().__init__()
         self.n_heads = n_heads
-        self.n_patches = (seq_len - patch_len) // stride + 1
+        n_regular = (seq_len - patch_len) // stride + 1
+        self.n_patches = n_regular + (1 if (seq_len - patch_len) % stride != 0 else 0)
         self.patch_len = patch_len
         self.pred_len = pred_len
         self.n_fore = ceil(pred_len / patch_len)
@@ -296,16 +234,16 @@ class Stack(nn.Module):
 class StackedEncoder(nn.Module):
 
     def __init__(self, n_stacks: int, n_heads: int, patch_len: int,
-                 seq_len: int, pred_len: int, d_model: int = 32, stride: int = 32,
+                 seq_len: int, pred_len: int, stride: int = 32,
                  e_layers: int = 2, dropout: float = 0.1,
                  output_attention: bool = False, enc_in: int = 1,
-                 attention_window: int = 10):
+                 attention_window: int = 10, kernel_size: int = 12):
         super().__init__()
         self.n_stacks = n_stacks
 
         self.embeddings = nn.ModuleList([
             TimeEmbedding(seq_len, patch_len // (2 ** i), stride // (2 ** i),
-                          n_heads, d_model, dropout, enc_in)
+                          n_heads, dropout, enc_in, kernel_size)
             for i in range(n_stacks)
         ])
         self.stacks = nn.ModuleList([
@@ -382,13 +320,13 @@ class Model(nn.Module):
             patch_len=self.patch_len,
             seq_len=self.seq_len,
             pred_len=self.pred_len,
-            d_model=getattr(configs, 'd_model', 32),
             stride=configs.stride,
             e_layers=configs.e_layers,
             dropout=configs.dropout,
             output_attention=configs.output_attention,
             enc_in=self.enc_in,
             attention_window=configs.attention_window,
+            kernel_size=getattr(configs, 'kernel_size', 12),
         )
 
         n_params = sum(p.numel() for p in self.parameters())

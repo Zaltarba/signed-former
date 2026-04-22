@@ -92,6 +92,7 @@ if __name__ == '__main__':
     parser.add_argument('--stride', type=int, default=8, help='stride between patches')
     parser.add_argument('--n_stacks', type=int, default=3, help='number of N-BEATS-style stacks')
     parser.add_argument('--attention_window', type=int, default=10, help='local attention window size (in patches)')
+    parser.add_argument('--kernel_size', type=int, default=12, help='causal conv kernel size in TimeEmbedding')
 
     args = parser.parse_args()
     args.use_gpu = True if torch.cuda.is_available() and args.use_gpu else False

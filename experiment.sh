@@ -36,6 +36,7 @@ if python run.py \
   --stride 16 \
   --n_stacks 1 \
   --attention_window 10 \
+  --kernel_size 12 \
   --use_norm 1 \
   --lradj fixed \
   --itr 1 \
