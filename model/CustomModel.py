@@ -237,6 +237,12 @@ class Stack(nn.Module):
         self.channel_mixing = nn.Linear(d_model, 1)
         self.fore_projection = nn.Linear(n_patches, self.n_fore)
 
+        self.seq_len = seq_len
+        self.fold = nn.Fold(output_size=(1, seq_len), kernel_size=(1, patch_len), stride=(1, stride))
+        ones = torch.ones(1, patch_len, n_patches)
+        divisor = self.fold(ones).reshape(seq_len).clamp(min=1.0)
+        self.register_buffer('divisor', divisor)
+
     def forward(self, tokens, x_original, attn_mask=None):
         B, H, L, D = tokens.shape
         N = L // self.n_patches
@@ -249,13 +255,17 @@ class Stack(nn.Module):
 
         h = h.reshape(B, H, self.n_patches, N, D)
         h = h.permute(0, 3, 4, 2, 1).contiguous()
-        h = self.channel_mixing(h).squeeze(-1)          # (B, N, D, P)
+        h = self.channel_mixing(h).squeeze(-1)          # (B, N, patch_len, n_patches)
 
-        forecast = self.fore_projection(h)              # (B, N, D, n_fore)
+        back = h.reshape(B * N, self.patch_len, self.n_patches)
+        back = self.fold(back).reshape(B, N, self.seq_len) / self.divisor
+        reconstruction = back.permute(0, 2, 1)          # (B, seq_len, N)
+
+        forecast = self.fore_projection(h)              # (B, N, patch_len, n_fore)
         forecast = forecast.flatten(start_dim=2)[:, :, -self.pred_len:]
         forecast = forecast.permute(0, 2, 1)            # (B, pred_len, N)
 
-        return forecast, x_original, attns
+        return forecast, x_original - reconstruction, attns
 
 
 # ─────────────────────────────────────────────────────────────────────
@@ -356,7 +366,7 @@ class Model(nn.Module):
 
     def __init__(self, configs):
         super().__init__()
-        self.seq_len = configs.seq_len + configs.pred_len
+        self.seq_len = configs.seq_len #+ configs.pred_len
         self.pred_len = configs.pred_len
         self.output_attention = configs.output_attention
         self.use_norm = configs.use_norm
@@ -405,10 +415,10 @@ class Model(nn.Module):
             seasonal_dec = self.seasonal(x_mark_dec[:, -self.pred_len:, :])
             x_enc = x_enc - seasonal_enc
 
-        if self.flag > 1200:
-            if self.flag == 1201:
+        if self.flag > 2400:
+            if self.flag == 2401:
                 print('Start full model')
-            x_enc = F.pad(x_enc, (0, 0, 0, self.pred_len))
+            #x_enc = F.pad(x_enc, (0, 0, 0, self.pred_len))
             
             dec_out, attns = self.encoder(x_enc)
             

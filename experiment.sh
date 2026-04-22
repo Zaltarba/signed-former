@@ -29,8 +29,8 @@ if python run.py \
   --batch_size 32 \
   --learning_rate 0.001 \
   --patience 3 \
-  --keep_ratio 0.2 \
-  --time_budget 600 \
+  --keep_ratio 0.1 \
+  --time_budget 6000 \
   --patch_len 32 \
   --stride 16 \
   --n_stacks 1 \
