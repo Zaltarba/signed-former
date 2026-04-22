@@ -317,8 +317,8 @@ class Dataset_PEMS(Dataset):
         self.scale = scale
         self.timeenc = timeenc
         self.freq = freq
-
         self.keep_ratio = keep_ratio
+
         self.root_path = root_path
         self.data_path = data_path
         self.__read_data__()
@@ -335,10 +335,13 @@ class Dataset_PEMS(Dataset):
 
         train_ratio = 0.6
         valid_ratio = 0.2
-        train_data = data[:int(train_ratio * len(data))]
-        valid_data = data[int(train_ratio * len(data)): int((train_ratio + valid_ratio) * len(data))]
-        test_data = data[int((train_ratio + valid_ratio) * len(data)):]
+        n = len(data)
+        split_offsets = [0, int(train_ratio * n), int((train_ratio + valid_ratio) * n)]
+        train_data = data[:split_offsets[1]]
+        valid_data = data[split_offsets[1]:split_offsets[2]]
+        test_data  = data[split_offsets[2]:]
         total_data = [train_data, valid_data, test_data]
+        self.offset = split_offsets[self.set_type]  # absolute start of this split
         data = total_data[self.set_type]
 
         if self.scale:
@@ -346,7 +349,7 @@ class Dataset_PEMS(Dataset):
             data = self.scaler.transform(data)
 
         df = pd.DataFrame(data)
-        df = df.ffill().bfill().values
+        df = df.fillna(method='ffill', limit=len(df)).fillna(method='bfill', limit=len(df)).values
 
         self.data_x = df
         self.data_y = df
@@ -359,10 +362,24 @@ class Dataset_PEMS(Dataset):
 
         seq_x = self.data_x[s_begin:s_end]
         seq_y = self.data_y[r_begin:r_end]
-        seq_x_mark = torch.zeros((seq_x.shape[0], 1))
-        seq_y_mark = torch.zeros((seq_x.shape[0], 1))
+        seq_x_mark = self._make_marks(s_begin, s_end)
+        seq_y_mark = self._make_marks(r_begin, r_end)
 
         return seq_x, seq_y, seq_x_mark, seq_y_mark
+
+    def _make_marks(self, start, end):
+        # 5-min PEMS: 12 slots/hour, 288 slots/day
+        # Mimics timeenc=1 freq='t': MinuteOfHour, HourOfDay, DayOfWeek, DayOfMonth, DayOfYear
+        pos = np.arange(start, end) + self.offset  # absolute position from dataset start
+        minute_of_hour = (pos % 12) / 11.0 - 0.5               # 5-min slot within hour
+        hour_of_day    = (pos // 12) % 24 / 23.0 - 0.5
+        day_of_week    = (pos // 288) % 7 / 6.0 - 0.5
+        day_of_month   = (pos // 288) % 30 / 29.0 - 0.5        # approximate
+        day_of_year    = (pos // 288) % 365 / 364.0 - 0.5      # approximate
+        return np.stack(
+            [minute_of_hour, hour_of_day, day_of_week, day_of_month, day_of_year],
+            axis=-1,
+        ).astype(np.float32)
 
     def __len__(self):
         return len(self.data_x) - self.seq_len - self.pred_len + 1
