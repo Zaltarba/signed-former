@@ -27,17 +27,17 @@ if python run.py \
   --dropout 0.1 \
   --train_epochs 30 \
   --batch_size 32 \
-  --learning_rate 0.001 \
-  --patience 3 \
+  --learning_rate 0.005 \
+  --patience 10 \
   --keep_ratio 0.1 \
   --time_budget 6000 \
-  --patch_len 32 \
-  --stride 16 \
-  --n_stacks 1 \
+  --patch_len 24 \
+  --stride 12 \
+  --n_stacks 3 \
   --attention_window 10 \
   --kernel_size 12 \
   --use_norm 1 \
-  --lradj fixed \
+  --lradj type1 \
   --itr 1 \
   --des "autorun"; then
   echo "Experiment completed successfully."

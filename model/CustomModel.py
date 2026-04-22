@@ -142,7 +142,6 @@ class SignedAttention(nn.Module):
         V = torch.matmul(A, values)
         return V.contiguous(), (A if self.output_attention else None)
 
-
 # ─────────────────────────────────────────────────────────────────────
 # 4.  ATTENTION LAYER + STACK
 # ─────────────────────────────────────────────────────────────────────
@@ -415,8 +414,8 @@ class Model(nn.Module):
             seasonal_dec = self.seasonal(x_mark_dec[:, -self.pred_len:, :])
             x_enc = x_enc - seasonal_enc
 
-        if self.flag > 2400:
-            if self.flag == 2401:
+        if self.flag > 1200:
+            if self.flag == 1201:
                 print('Start full model')
             #x_enc = F.pad(x_enc, (0, 0, 0, self.pred_len))
             

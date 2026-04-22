@@ -42,3 +42,6 @@ a8cc75c	0.136418	3.57	ok	Patch ordering cleanup + tail patch to preserve last da
 -e 26dcc37	N/A	0.0	crash	Fix x_mark_enc None issue for PEMS dataset
 -e 26dcc37	N/A	0.0	crash	Fix x_mark_enc None issue for PEMS dataset
 -e 26dcc37	N/A	0.0	crash	Fix x_mark_enc None issue for PEMS dataset
+37f4fe9	0.432007	1.17	ok	Add overlap-add fold backcast residual to Stack
+4a73778	0.110545	0.74	ok	Add baseline iTransformer script for seq_len 96, horizon 12, keep_ratio 0.1
+4a73778	0.388974	0.43	ok	Add baseline iTransformer script for seq_len 96, horizon 12, keep_ratio 0.1
