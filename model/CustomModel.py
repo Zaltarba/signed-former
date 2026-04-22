@@ -96,18 +96,21 @@ class TimeEmbedding(nn.Module):
 # ─────────────────────────────────────────────────────────────────────
 
 class SignedAttention(nn.Module):
-    """A = softmax(+s) - softmax(-s), row-normalised.
+    """Projection-Orthogonal Signed Attention.
 
-    Causal mask: query patch t attends only to key patches t' where
-    0 < (t - t') < attention_window (excludes self).
+    A = softmax(+s) - softmax(-s) with query-variate-specific
+    orthogonalized values (cross-variate + temporal Gram-Schmidt).
+    Self-attention included.
     """
 
     def __init__(self, n_patches: int, patch_len: int, n_heads: int,
+                 n_channels: int = 1,
                  attention_dropout: float = 0.1,
                  output_attention: bool = False,
                  attention_window: int = 10):
         super().__init__()
         self.n_patches = n_patches
+        self.n_channels = n_channels
         self.dropout = nn.Dropout(attention_dropout)
         self.output_attention = output_attention
         self.attention_window = attention_window
@@ -120,27 +123,68 @@ class SignedAttention(nn.Module):
         if self._cached_key != key or self._cached_mask is None:
             pid = torch.arange(self.n_patches, device=device).repeat_interleave(channels)
             diff = pid.unsqueeze(0) - pid.unsqueeze(1)
-            mask = (diff <= 0) | (diff >= self.attention_window)
+            mask = (diff < 0) | (diff >= self.attention_window)
             self._cached_mask = mask.unsqueeze(0).unsqueeze(0)
             self._cached_key = key
         return self._cached_mask
 
     def forward(self, queries, keys, values, attn_mask=None):
         B, H, L, D = queries.shape
-        channels = L // self.n_patches
+        N = self.n_channels
+        P = self.n_patches
+        W = self.attention_window
+        dev = values.device
 
         scores = torch.matmul(queries, keys.transpose(-1, -2))
         scale = self.log_scale.exp().clamp(1, 30.0) / sqrt(D)
-
-        cmask = self._get_causal_mask(channels, queries.device)
+        cmask = self._get_causal_mask(N, dev)
         pos = scores.masked_fill(cmask, -1e4)
         neg = (-scores).masked_fill(cmask, -1e4)
-
         A = torch.softmax(scale * pos, dim=-1) - torch.softmax(scale * neg, dim=-1)
         A = self.dropout(A)
 
-        V = torch.matmul(A, values)
-        return V.contiguous(), (A if self.output_attention else None)
+        V4 = values.reshape(B, H, P, N, D)
+        G = torch.einsum('bhpid, bhpjd -> bhpij', V4, V4)
+        norms2 = G.diagonal(dim1=-2, dim2=-1).clamp(min=1e-8)
+
+        off_diag = 1.0 - torch.eye(N, device=dev, dtype=values.dtype)
+        alphas = (G / norms2.unsqueeze(-2)) * off_diag
+
+        V4_pad = F.pad(V4, (0, 0, 0, 0, W - 1, 0))
+        V_win = V4_pad.unfold(2, W, 1).permute(0, 1, 2, 5, 3, 4)
+
+        alphas_pad = F.pad(alphas, (0, 0, 0, 0, W - 1, 0))
+        alphas_win = alphas_pad.unfold(2, W, 1).permute(0, 1, 2, 5, 3, 4)
+
+        raw_offsets = (torch.arange(P, device=dev) - (W - 1)) * N
+        k_local = torch.arange(W * N, device=dev)
+        k_idx = (raw_offsets.unsqueeze(1) + k_local.unsqueeze(0)).clamp(0, L - 1)
+        k_idx = k_idx[None, None].expand(B, H, -1, -1)
+
+        output = values.new_zeros(B, H, L, D)
+
+        for i in range(N):
+            alpha_win_i = alphas_win[:, :, :, :, :, i]
+            ref_win_i = V_win[:, :, :, :, i, :]
+
+            V1_win = V_win - alpha_win_i.unsqueeze(-1) * ref_win_i.unsqueeze(-2)
+
+            slices = [V1_win[:, :, :, s, :, :].float() for s in range(W)]
+            for s in range(W - 2, -1, -1):
+                ref_s = slices[s + 1]
+                cur_s = slices[s]
+                dot = (cur_s * ref_s).sum(-1, keepdim=True)
+                nrm = (ref_s * ref_s).sum(-1, keepdim=True).clamp(min=1e-8)
+                slices[s] = cur_s - (dot / nrm) * ref_s
+            V2_win = torch.stack(slices, dim=3).to(values.dtype)
+
+            V2_flat = V2_win.reshape(B, H, P, W * N, D)
+            q_idx = torch.arange(i, L, N, device=dev)
+            A_win = A[:, :, q_idx, :].gather(-1, k_idx)
+            out_i = torch.einsum('bhqk, bhqkd -> bhqd', A_win, V2_flat)
+            output[:, :, q_idx, :] = out_i
+
+        return output.contiguous(), (A if self.output_attention else None)
 
 # ─────────────────────────────────────────────────────────────────────
 # 4.  ATTENTION LAYER + STACK
@@ -177,7 +221,7 @@ class SignedAttentionLayer(nn.Module):
     """
 
     def __init__(self, n_patches: int, patch_len: int, d_model: int, n_heads: int = None,
-                 dropout: float = 0.1, output_attention: bool = False,
+                 n_channels: int = 1, dropout: float = 0.1, output_attention: bool = False,
                  attention_window: int = 10):
         super().__init__()
         self.d_model = d_model
@@ -185,7 +229,10 @@ class SignedAttentionLayer(nn.Module):
 
         self.to_heads = nn.Linear(d_model, self.n_heads)
         self.attn = SignedAttention(n_patches, patch_len, self.n_heads,
-                                    dropout, output_attention, attention_window)
+                                    n_channels=n_channels,
+                                    attention_dropout=dropout,
+                                    output_attention=output_attention,
+                                    attention_window=attention_window)
         self.from_heads = nn.Linear(self.n_heads, d_model)
         self.drop = nn.Dropout(dropout)
         self.norm = nn.RMSNorm(patch_len)
@@ -217,7 +264,8 @@ class Stack(nn.Module):
 
     def __init__(self, d_model: int, patch_len: int, seq_len: int, pred_len: int,
                  stride: int, e_layers: int = 2, dropout: float = 0.1,
-                 n_heads: int = 8, output_attention: bool = False, attention_window: int = 10):
+                 n_heads: int = 8, output_attention: bool = False, attention_window: int = 10,
+                 enc_in: int = 1):
         super().__init__()
         n_patches = (seq_len - patch_len) // stride + 1
         self.n_patches = n_patches
@@ -228,8 +276,10 @@ class Stack(nn.Module):
         self.n_heads = n_heads
 
         self.layers = nn.ModuleList([
-            SignedAttentionLayer(n_patches, patch_len, d_model, n_heads, dropout,
-                                output_attention, attention_window)
+            SignedAttentionLayer(n_patches, patch_len, d_model, n_heads,
+                                n_channels=enc_in, dropout=dropout,
+                                output_attention=output_attention,
+                                attention_window=attention_window)
             for _ in range(e_layers)
         ])
 
@@ -288,7 +338,7 @@ class StackedEncoder(nn.Module):
             Stack(d_model, patch_len // (2 ** i), seq_len, pred_len,
                   stride=stride // (2 ** i), e_layers=e_layers, dropout=dropout,
                   n_heads=n_heads, output_attention=output_attention,
-                  attention_window=attention_window)
+                  attention_window=attention_window, enc_in=enc_in)
             for i in range(n_stacks)
         ])
         self.forecast_weights = nn.Parameter(torch.ones(n_stacks))
