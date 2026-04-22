@@ -20,13 +20,12 @@ if python run.py \
   --enc_in 170 \
   --dec_in 170 \
   --c_out 170 \
-  --d_model 128 \
+  --d_model 16 \
   --n_heads 8 \
-  --e_layers 2 \
+  --e_layers 3 \
   --d_ff 32 \
   --dropout 0.1 \
-  --embed timeF \
-  --train_epochs 20 \
+  --train_epochs 30 \
   --batch_size 32 \
   --learning_rate 0.001 \
   --patience 3 \

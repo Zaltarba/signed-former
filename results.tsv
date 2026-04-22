@@ -30,3 +30,11 @@ ce2d687	0.109471	3.10	ok	Two-level DLinear k=25+k=9: medium-fast trend decomposi
 428fe46	0.106093	2.29	ok	Diagonal Q/K feature scaling: learnable per-dim weights for attention (32 params/layer, zero extra matmul)
 428fe46	0.106093	3.10	ok	Diagonal Q/K feature scaling: elementwise per-dim weight (4 epochs due to GPU contention)
 428fe46	0.107405	2.29	ok	Diagonal Q/K feature scaling: learnable per-dim weights for attention (32 params/layer, zero extra matmul)
+a8cc75c	0.136418	3.57	ok	Patch ordering cleanup + tail patch to preserve last datapoints
+-e 440fc9f	N/A	0.0	crash	Fourier residual model architecture update
+-e 4b4b035	N/A	0.0	crash	Add keep_ratio usage to PEMS_dataset for feature filtering
+-e 4b4b035	N/A	0.0	crash	Add keep_ratio usage to PEMS_dataset for feature filtering
+-e 4b4b035	N/A	0.0	crash	Add keep_ratio usage to PEMS_dataset for feature filtering
+-e 4b4b035	N/A	0.0	crash	Add keep_ratio usage to PEMS_dataset for feature filtering
+-e 43a6159	N/A	0.0	crash	Remove hardcoded PEMS/Solar marks filtering in experiment
+-e 43a6159	N/A	0.0	crash	Remove hardcoded PEMS/Solar marks filtering in experiment

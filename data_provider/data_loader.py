@@ -329,10 +329,6 @@ class Dataset_PEMS(Dataset):
         data = np.load(data_file, allow_pickle=True)
         data = data['data'][:, :, 0]
 
-        if self.keep_ratio < 1.0:
-            n_keep = max(1, int(data.shape[1] * self.keep_ratio))
-            data = data[:, :n_keep]
-
         train_ratio = 0.6
         valid_ratio = 0.2
         n = len(data)

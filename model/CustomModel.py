@@ -379,9 +379,8 @@ class Model(nn.Module):
             x_enc = x_enc - means
             stdev = (x_enc.var(dim=1, keepdim=True, correction=0) + 1e-5).sqrt()
             x_enc = x_enc / stdev
-
         if has_marks:
-            #print(x_mark_enc.shape)
+            print(x_mark_enc.shape)
             seasonal_enc = self.seasonal(x_mark_enc)
             seasonal_dec = self.seasonal(x_mark_dec[:, -self.pred_len:, :])
             x_enc = x_enc - seasonal_enc
