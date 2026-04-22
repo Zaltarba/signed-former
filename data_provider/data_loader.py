@@ -329,6 +329,10 @@ class Dataset_PEMS(Dataset):
         data = np.load(data_file, allow_pickle=True)
         data = data['data'][:, :, 0]
 
+        if self.keep_ratio < 1.0:
+            n_keep = max(1, int(data.shape[1] * self.keep_ratio))
+            data = data[:, :n_keep]
+
         train_ratio = 0.6
         valid_ratio = 0.2
         n = len(data)
@@ -367,7 +371,7 @@ class Dataset_PEMS(Dataset):
         # 5-min PEMS: 12 slots/hour, 288 slots/day
         # Mimics timeenc=1 freq='t': MinuteOfHour, HourOfDay, DayOfWeek, DayOfMonth, DayOfYear
         pos = np.arange(start, end) + self.offset  # absolute position from dataset start
-        minute_of_hour = (pos % 12) / 11.0 - 0.5               # 5-min slot within hour
+        minute_of_hour = (pos % 12) / 12.0 - 0.5               # 5-min slot within hour
         hour_of_day    = (pos // 12) % 24 / 23.0 - 0.5
         day_of_week    = (pos // 288) % 7 / 6.0 - 0.5
         day_of_month   = (pos // 288) % 30 / 29.0 - 0.5        # approximate

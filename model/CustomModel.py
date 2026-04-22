@@ -55,40 +55,38 @@ class ConvBlock(nn.Module):
 class TimeEmbedding(nn.Module):
     """Per-variate feature extraction then causal patch unfolding.
 
-    1 → d_model (causal conv) → n_heads (1×1 conv) → refine (ConvBlock) → patches
-    Output: (B, n_heads, n_patches * N, patch_len)
+    1 → d_model (causal conv with kernel_size) → refine (ConvBlock) → patches
+    Output: (B, d_model, n_patches * N, patch_len)
     """
 
     def __init__(self, seq_len: int, patch_len: int = 64,
-                 stride: int = 32, n_heads: int = 8,
-                 d_model: int = 32, dropout: float = 0.1, enc_in: int = 1):
+                 stride: int = 32, d_model: int = 32, kernel_size: int = 12,
+                 dropout: float = 0.1, enc_in: int = 1):
         super().__init__()
         self.patch_len = patch_len
         self.stride = stride
-        self.n_heads = n_heads
+        self.d_model = d_model
         self.n_patches = (seq_len - patch_len) // stride + 1
 
-        self.project = CausalConv(1, d_model, kernel_size=3)
-        self.channel_reduce = CausalConv(d_model, n_heads, kernel_size=1)
-        self.refine = ConvBlock(n_heads, kernel_size=12, dropout=dropout)
+        self.project = CausalConv(1, d_model, kernel_size=kernel_size)
+        self.refine = ConvBlock(d_model, kernel_size=kernel_size, dropout=dropout)
         self.dropout = nn.Dropout(dropout)
 
     def forward(self, x: torch.Tensor, x_mark=None):
-        """x: (B, T, N) → (B, n_heads, n_patches*N, patch_len)"""
+        """x: (B, T, N) → (B, d_model, n_patches*N, patch_len)"""
         B, T, N = x.shape
         x = x.permute(0, 2, 1).reshape(B * N, 1, T)
 
         x = self.project(x)
-        x = self.channel_reduce(x)
         x = self.refine(x)
 
         x = torch.flip(x, dims=[2])
         patches = x.unfold(dimension=2, size=self.patch_len, step=self.stride)
         patches = patches.flip(dims=[3]).flip(dims=[2])
 
-        patches = patches.view(B, N, self.n_heads, self.n_patches, self.patch_len)
+        patches = patches.view(B, N, self.d_model, self.n_patches, self.patch_len)
         patches = patches.permute(0, 2, 3, 1, 4)
-        patches = patches.reshape(B, self.n_heads, self.n_patches * N, self.patch_len)
+        patches = patches.reshape(B, self.d_model, self.n_patches * N, self.patch_len)
 
         return self.dropout(patches)
 
@@ -151,44 +149,63 @@ class SignedAttention(nn.Module):
 
 class ConvFFN(nn.Module):
     """Depthwise causal expand-then-reduce FFN.
-    Input/Output: (B, H, L, D)
+    Input/Output: (B, d_model, L, D)
     """
-    def __init__(self, n_heads: int, patch_len: int, expand: int = 2,
+    def __init__(self, d_model: int, patch_len: int, expand: int = 2,
                  kernel_size: int = 3, dropout: float = 0.1):
         super().__init__()
-        self.conv_up = CausalConv(n_heads, n_heads * expand,
-                                  kernel_size=kernel_size, groups=n_heads)
-        self.conv_down = CausalConv(n_heads * expand, n_heads,
-                                    kernel_size=1, groups=n_heads)
+        self.conv_up = CausalConv(d_model, d_model * expand,
+                                  kernel_size=kernel_size, groups=d_model)
+        self.conv_down = CausalConv(d_model * expand, d_model,
+                                    kernel_size=1, groups=d_model)
         self.act = nn.GELU()
         self.drop = nn.Dropout(dropout)
         self.norm = nn.RMSNorm(patch_len)
 
     def forward(self, x):
-        B, H, L, D = x.shape
-        r = x.permute(0, 2, 1, 3).reshape(B * L, H, D)
+        B, C, L, D = x.shape
+        r = x.permute(0, 2, 1, 3).reshape(B * L, C, D)
         r = self.act(self.conv_up(r))
         r = self.conv_down(self.drop(r))
-        r = r.reshape(B, L, H, D).permute(0, 2, 1, 3)
+        r = r.reshape(B, L, C, D).permute(0, 2, 1, 3)
         return self.norm(x + r)
 
 
 class SignedAttentionLayer(nn.Module):
-    """SignedAttention + residual dropout + norm + ConvFFN."""
+    """SignedAttention + residual dropout + norm + ConvFFN.
 
-    def __init__(self, n_patches: int, patch_len: int, n_heads: int,
+    Includes channel mixing: d_model → n_heads (for attention) → d_model (for residual)
+    """
+
+    def __init__(self, n_patches: int, patch_len: int, d_model: int, n_heads: int = None,
                  dropout: float = 0.1, output_attention: bool = False,
                  attention_window: int = 10):
         super().__init__()
-        self.attn = SignedAttention(n_patches, patch_len, n_heads,
+        self.d_model = d_model
+        self.n_heads = n_heads or d_model
+
+        self.to_heads = nn.Linear(d_model, self.n_heads)
+        self.attn = SignedAttention(n_patches, patch_len, self.n_heads,
                                     dropout, output_attention, attention_window)
+        self.from_heads = nn.Linear(self.n_heads, d_model)
         self.drop = nn.Dropout(dropout)
         self.norm = nn.RMSNorm(patch_len)
-        self.ffn = ConvFFN(n_heads, patch_len, expand=2, kernel_size=3,
+        self.ffn = ConvFFN(d_model, patch_len, expand=2, kernel_size=3,
                            dropout=dropout)
 
     def forward(self, h, attn_mask=None):
-        out, att = self.attn(h, h, h, attn_mask)
+        B, H, L, D = h.shape
+
+        h_proj = h.permute(0, 2, 3, 1).reshape(B * L * D, H)
+        h_proj = self.to_heads(h_proj)
+        h_proj = h_proj.reshape(B, L, D, self.n_heads).permute(0, 3, 1, 2)
+
+        out, att = self.attn(h_proj, h_proj, h_proj, attn_mask)
+
+        out = out.permute(0, 2, 3, 1).reshape(B * L * D, self.n_heads)
+        out = self.from_heads(out)
+        out = out.reshape(B, L, D, H).permute(0, 3, 1, 2)
+
         h = self.norm(h + self.drop(out))
         h = self.ffn(h)
         return h, att
@@ -196,26 +213,28 @@ class SignedAttentionLayer(nn.Module):
 
 class Stack(nn.Module):
     """One N-BEATS-style stack:
-    e_layers × SignedAttentionLayer → aggregate heads → forecast
+    e_layers × SignedAttentionLayer → aggregate features → forecast
     """
 
-    def __init__(self, n_heads: int, patch_len: int, seq_len: int, pred_len: int,
+    def __init__(self, d_model: int, patch_len: int, seq_len: int, pred_len: int,
                  stride: int, e_layers: int = 2, dropout: float = 0.1,
-                 output_attention: bool = False, attention_window: int = 10):
+                 n_heads: int = 8, output_attention: bool = False, attention_window: int = 10):
         super().__init__()
         n_patches = (seq_len - patch_len) // stride + 1
         self.n_patches = n_patches
         self.patch_len = patch_len
         self.pred_len = pred_len
         self.n_fore = ceil(pred_len / patch_len)
+        self.d_model = d_model
+        self.n_heads = n_heads
 
         self.layers = nn.ModuleList([
-            SignedAttentionLayer(n_patches, patch_len, n_heads, dropout,
+            SignedAttentionLayer(n_patches, patch_len, d_model, n_heads, dropout,
                                 output_attention, attention_window)
             for _ in range(e_layers)
         ])
 
-        self.channel_mixing = nn.Linear(n_heads, 1)
+        self.channel_mixing = nn.Linear(d_model, 1)
         self.fore_projection = nn.Linear(n_patches, self.n_fore)
 
     def forward(self, tokens, x_original, attn_mask=None):
@@ -245,21 +264,22 @@ class Stack(nn.Module):
 
 class StackedEncoder(nn.Module):
 
-    def __init__(self, n_stacks: int, n_heads: int, patch_len: int,
+    def __init__(self, n_stacks: int, patch_len: int,
                  seq_len: int, pred_len: int, d_model: int = 32, stride: int = 32,
-                 e_layers: int = 2, dropout: float = 0.1,
-                 output_attention: bool = False, enc_in: int = 1,
+                 e_layers: int = 2, dropout: float = 0.1, kernel_size: int = 12,
+                 n_heads: int = 8, output_attention: bool = False, enc_in: int = 1,
                  attention_window: int = 10):
         super().__init__()
         self.embeddings = nn.ModuleList([
             TimeEmbedding(seq_len, patch_len // (2 ** i), stride // (2 ** i),
-                          n_heads, d_model, dropout, enc_in)
+                          d_model, kernel_size, dropout, enc_in)
             for i in range(n_stacks)
         ])
         self.stacks = nn.ModuleList([
-            Stack(n_heads, patch_len // (2 ** i), seq_len, pred_len,
+            Stack(d_model, patch_len // (2 ** i), seq_len, pred_len,
                   stride=stride // (2 ** i), e_layers=e_layers, dropout=dropout,
-                  output_attention=output_attention, attention_window=attention_window)
+                  n_heads=n_heads, output_attention=output_attention,
+                  attention_window=attention_window)
             for i in range(n_stacks)
         ])
         self.forecast_weights = nn.Parameter(torch.ones(n_stacks))
@@ -343,7 +363,6 @@ class Model(nn.Module):
 
         self.encoder = StackedEncoder(
             n_stacks=getattr(configs, 'n_stacks', 3),
-            n_heads=configs.n_heads,
             patch_len=configs.patch_len,
             seq_len=self.seq_len,
             pred_len=self.pred_len,
@@ -351,6 +370,8 @@ class Model(nn.Module):
             stride=configs.stride,
             e_layers=configs.e_layers,
             dropout=configs.dropout,
+            kernel_size=getattr(configs, 'kernel_size', 12),
+            n_heads=configs.n_heads,
             output_attention=configs.output_attention,
             enc_in=configs.enc_in,
             attention_window=configs.attention_window,
@@ -360,7 +381,7 @@ class Model(nn.Module):
         _freq_to_nfeats = {'h': 4, 't': 5, 's': 6, 'd': 3, 'b': 3, 'w': 2, 'm': 1, 'a': 1}
         freq = getattr(configs, 'freq', 'h')
         explicit = getattr(configs, 'n_time_features', 0)
-        n_time_features = explicit if explicit > 0 else _freq_to_nfeats.get(freq, 4)
+        n_time_features = explicit if explicit > 0 else _freq_to_nfeats.get(freq, 5)
         n_harmonics = getattr(configs, 'n_harmonics', 4)
         self.seasonal = FourierSeasonalModel(
             n_time_features=n_time_features,
@@ -380,12 +401,13 @@ class Model(nn.Module):
             stdev = (x_enc.var(dim=1, keepdim=True, correction=0) + 1e-5).sqrt()
             x_enc = x_enc / stdev
         if has_marks:
-            print(x_mark_enc.shape)
             seasonal_enc = self.seasonal(x_mark_enc)
             seasonal_dec = self.seasonal(x_mark_dec[:, -self.pred_len:, :])
             x_enc = x_enc - seasonal_enc
 
-        if self.flag > 4:
+        if self.flag > 1200:
+            if self.flag == 1201:
+                print('Start full model')
             x_enc = F.pad(x_enc, (0, 0, 0, self.pred_len))
             
             dec_out, attns = self.encoder(x_enc)
@@ -395,7 +417,9 @@ class Model(nn.Module):
         else:
             dec_out = seasonal_dec
             attns = None
-        self.flag = self.flag + 1
+
+        if self.training:
+            self.flag = self.flag + 1
 
         if self.use_norm:
             dec_out = dec_out * stdev.squeeze(1).unsqueeze(1)
