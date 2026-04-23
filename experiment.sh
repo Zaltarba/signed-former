@@ -14,7 +14,7 @@ if python run.py \
   --root_path ./dataset/PEMS/ \
   --data_path PEMS08.npz \
   --features M \
-  --seq_len 192 \
+  --seq_len 96 \
   --label_len 0 \
   --pred_len 12 \
   --enc_in 170 \
@@ -33,8 +33,8 @@ if python run.py \
   --time_budget 6000 \
   --patch_len 24 \
   --stride 12 \
-  --n_stacks 3 \
-  --attention_window 10 \
+  --n_stacks 1 \
+  --attention_window 3 \
   --kernel_size 12 \
   --use_norm 1 \
   --lradj type1 \

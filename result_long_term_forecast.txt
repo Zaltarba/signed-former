@@ -97,3 +97,6 @@ mse:0.11054490506649017, mae:0.23785603046417236
 PEMS08_custom_CustomModel_PEMS_M_ft96_sl0_ll12_pl16_dm8_nh3_el1_dl32_df1_fctimeF_ebTrue_dtautorun_projection_0  
 mse:0.38897448778152466, mae:0.49120476841926575
 
+PEMS08_custom_CustomModel_PEMS_M_ft192_sl0_ll12_pl16_dm8_nh3_el1_dl32_df1_fctimeF_ebTrue_dtautorun_projection_0  
+mse:0.3877963125705719, mae:0.5103123784065247
+

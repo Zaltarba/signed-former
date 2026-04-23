@@ -45,3 +45,4 @@ a8cc75c	0.136418	3.57	ok	Patch ordering cleanup + tail patch to preserve last da
 37f4fe9	0.432007	1.17	ok	Add overlap-add fold backcast residual to Stack
 4a73778	0.110545	0.74	ok	Add baseline iTransformer script for seq_len 96, horizon 12, keep_ratio 0.1
 4a73778	0.388974	0.43	ok	Add baseline iTransformer script for seq_len 96, horizon 12, keep_ratio 0.1
+17f4826	0.387796	28.63	ok	Implement projection-orthogonal signed attention
