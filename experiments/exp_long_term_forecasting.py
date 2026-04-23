@@ -5,6 +5,7 @@ from utils.metrics import metric
 import torch
 import torch.nn as nn
 from torch import optim
+from torch.utils.data import DataLoader
 import os
 import time
 import warnings
@@ -29,6 +30,14 @@ class Exp_Long_Term_Forecast(Exp_Basic):
         data_set, data_loader = data_provider(self.args, flag)
         return data_set, data_loader
 
+    def _get_data_full(self, flag):
+        """Load dataset ignoring keep_ratio (all variates, all samples)."""
+        original = getattr(self.args, 'keep_ratio', 1.0)
+        self.args.keep_ratio = 1.0
+        data_set, data_loader = data_provider(self.args, flag)
+        self.args.keep_ratio = original
+        return data_set, data_loader
+
     def _select_optimizer(self):
         model_optim = optim.Adam(self.model.parameters(), lr=self.args.learning_rate)
         return model_optim
@@ -37,7 +46,7 @@ class Exp_Long_Term_Forecast(Exp_Basic):
         criterion = nn.MSELoss()
         return criterion
 
-    def vali(self, vali_data, vali_loader, criterion):
+    def vali(self, vali_data, vali_loader, criterion, n_keep=None):
         total_loss = []
         self.model.eval()
         with torch.no_grad():
@@ -46,6 +55,10 @@ class Exp_Long_Term_Forecast(Exp_Basic):
                 batch_y = batch_y.float().to(self.device)
                 batch_x_mark = batch_x_mark.float().to(self.device)
                 batch_y_mark = batch_y_mark.float().to(self.device)
+
+                if n_keep is not None:
+                    batch_x = batch_x[:, :, :n_keep]
+                    batch_y = batch_y[:, :, :n_keep]
 
                 # decoder input
                 dec_inp = torch.zeros_like(batch_y[:, -self.args.pred_len:, :]).float()
@@ -77,9 +90,19 @@ class Exp_Long_Term_Forecast(Exp_Basic):
         return total_loss
 
     def train(self, setting):
-        train_data, train_loader = self._get_data(flag='train')
-        vali_data, vali_loader = self._get_data(flag='val')
-        test_data, test_loader = self._get_data(flag='test')
+        keep_ratio = getattr(self.args, 'keep_ratio', 1.0)
+        if keep_ratio < 1.0:
+            train_data, train_loader = self._get_data_full(flag='train')
+            vali_data, vali_loader = self._get_data_full(flag='val')
+            test_data, test_loader = self._get_data_full(flag='test')
+            n_variates = train_data[0][0].shape[-1]
+            n_keep = max(1, int(n_variates * keep_ratio))
+        else:
+            train_data, train_loader = self._get_data(flag='train')
+            vali_data, vali_loader = self._get_data(flag='val')
+            test_data, test_loader = self._get_data(flag='test')
+            n_variates = None
+            n_keep = None
 
         path = os.path.join(self.args.checkpoints, setting)
         if not os.path.exists(path):
@@ -111,6 +134,11 @@ class Exp_Long_Term_Forecast(Exp_Basic):
                 batch_y = batch_y.float().to(self.device)
                 batch_x_mark = batch_x_mark.float().to(self.device)
                 batch_y_mark = batch_y_mark.float().to(self.device)
+
+                if keep_ratio < 1.0:
+                    variate_idx = torch.randperm(n_variates, device=self.device)[:n_keep]
+                    batch_x = batch_x[:, :, variate_idx]
+                    batch_y = batch_y[:, :, variate_idx]
 
                 # decoder input
                 dec_inp = torch.zeros_like(batch_y[:, -self.args.pred_len:, :]).float()
@@ -159,8 +187,8 @@ class Exp_Long_Term_Forecast(Exp_Basic):
 
             print("Epoch: {} cost time: {}".format(epoch + 1, time.time() - epoch_time))
             train_loss = np.average(train_loss)
-            vali_loss = self.vali(vali_data, vali_loader, criterion)
-            test_loss = self.vali(test_data, test_loader, criterion)
+            vali_loss = self.vali(vali_data, vali_loader, criterion, n_keep=n_keep)
+            test_loss = self.vali(test_data, test_loader, criterion, n_keep=n_keep)
 
             print("Epoch: {0}, Steps: {1} | Train Loss: {2:.7f} Vali Loss: {3:.7f} Test Loss: {4:.7f}".format(
                 epoch + 1, train_steps, train_loss, vali_loss, test_loss))
@@ -183,7 +211,14 @@ class Exp_Long_Term_Forecast(Exp_Basic):
         return self.model
 
     def test(self, setting, test=0):
-        test_data, test_loader = self._get_data(flag='test')
+        keep_ratio = getattr(self.args, 'keep_ratio', 1.0)
+        if keep_ratio < 1.0:
+            test_data, test_loader = self._get_data_full(flag='test')
+            n_variates = test_data[0][0].shape[-1]
+            n_keep = max(1, int(n_variates * keep_ratio))
+        else:
+            test_data, test_loader = self._get_data(flag='test')
+            n_keep = None
         if test:
             print('loading model')
             self.model.load_state_dict(torch.load(os.path.join('./checkpoints/' + setting, 'checkpoint.pth')))
@@ -200,7 +235,11 @@ class Exp_Long_Term_Forecast(Exp_Basic):
                 batch_x = batch_x.float().to(self.device)
                 batch_y = batch_y.float().to(self.device)
 
-                if 'PEMS' in self.args.data or 'Solar' in self.args.data:
+                if n_keep is not None:
+                    batch_x = batch_x[:, :, :n_keep]
+                    batch_y = batch_y[:, :, :n_keep]
+
+                if 'Solar' in self.args.data:
                     batch_x_mark = None
                     batch_y_mark = None
                 else:
