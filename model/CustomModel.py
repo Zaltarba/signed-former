@@ -105,7 +105,8 @@ class SignedAttention(nn.Module):
     Optimized:
       - Local attention (Idea D): scores are computed only on the W*N
         keys inside the causal window per query patch — the full L*L
-        matrix is never built.
+        matrix is never built. The windowed K/V tensors are built via
+        zero-pad + unfold (sequential reads) rather than a scatter gather.
       - Vectorized cross-variate projection over the query-variate
         dimension, chunked so peak memory stays bounded for large N.
     """
@@ -121,27 +122,21 @@ class SignedAttention(nn.Module):
         self.dropout = nn.Dropout(attention_dropout)
         self.output_attention = output_attention
         self.attention_window = attention_window
-        self._cached_local_key = None
-        self._cached_k_idx = None
+        self._cached_mask_key = None
         self._cached_local_mask = None
         self.log_scale = nn.Parameter(torch.tensor(log(2.0)))
 
-    def _get_local(self, device: torch.device):
-        P, N, W = self.n_patches, self.n_channels, self.attention_window
-        L = P * N
-        key = (P, N, W, device)
-        if self._cached_local_key != key:
+    def _get_local_mask(self, device: torch.device):
+        P, W = self.n_patches, self.attention_window
+        key = (P, W, device)
+        if self._cached_mask_key != key:
             ar_p = torch.arange(P, device=device)
-            ar_k = torch.arange(W * N, device=device)
-            slot = ar_k // N
-            raw_offsets = (ar_p - (W - 1)) * N
-            k_idx = (raw_offsets.unsqueeze(1) + ar_k.unsqueeze(0)).clamp(0, L - 1)
-            intended_p = ar_p.unsqueeze(1) - (W - 1) + slot.unsqueeze(0)
-            local_mask = intended_p < 0
-            self._cached_k_idx = k_idx
-            self._cached_local_mask = local_mask
-            self._cached_local_key = key
-        return self._cached_k_idx, self._cached_local_mask
+            ar_w = torch.arange(W, device=device)
+            # mask[p, w] == True iff slot w of query patch p comes from the
+            # pre-start (padded) region and must be masked in the softmax.
+            self._cached_local_mask = (ar_p[:, None] + ar_w[None, :] - (W - 1)) < 0
+            self._cached_mask_key = key
+        return self._cached_local_mask
 
     def _chunk_size(self, B: int, H: int, P: int, W: int, N: int, D: int) -> int:
         # Peak intermediate is V1 of shape (B, H, P, W, c, N, D) in fp32.
@@ -155,33 +150,36 @@ class SignedAttention(nn.Module):
         dev = values.device
 
         # ─── Phase 1 — local signed attention ─────────────────────────
-        k_idx, local_mask = self._get_local(dev)
+        # Zero-pad the key/value patches at the front of the P-axis, then
+        # unfold into overlapping W-patch windows. Padded positions will be
+        # masked to -1e4 in the softmax, so the zero values do not leak —
+        # the result matches the clamp+gather variant exactly (for V, the
+        # padded zeros also obviate the explicit masked_fill).
+        local_mask = self._get_local_mask(dev)            # (P, W)
 
-        K_local = keys[:, :, k_idx, :]                    # (B, H, P, W*N, D)
-        V_local = values[:, :, k_idx, :]                  # (B, H, P, W*N, D)
+        K_r = keys.reshape(B, H, P, N, D)
+        V_r = values.reshape(B, H, P, N, D)
+        K_pad = F.pad(K_r, (0, 0, 0, 0, W - 1, 0))        # (B,H,P+W-1,N,D)
+        V_pad = F.pad(V_r, (0, 0, 0, 0, W - 1, 0))
+        K_win = K_pad.unfold(2, W, 1).permute(0, 1, 2, 5, 3, 4)  # (B,H,P,W,N,D)
+        V_win = V_pad.unfold(2, W, 1).permute(0, 1, 2, 5, 3, 4)  # (B,H,P,W,N,D)
+
         Q_p = queries.reshape(B, H, P, N, D)
 
-        scores = torch.einsum('bhpnd,bhpkd->bhpnk', Q_p, K_local)  # (B,H,P,N,W*N)
+        scores = torch.einsum('bhpqd,bhpwkd->bhpqwk', Q_p, K_win)  # (B,H,P,N,W,N)
         scale = self.log_scale.exp().clamp(1, 30.0) / sqrt(D)
-        m = local_mask[None, None, :, None, :]
+        m = local_mask[None, None, :, None, :, None]       # (1,1,P,1,W,1)
         s_pos = scores.masked_fill(m, -1e4)
-        s_neg = (-scores).masked_fill(m, -1e4)
-        A = torch.softmax(scale * s_pos, dim=-1) - torch.softmax(scale * s_neg, dim=-1)
-        A = self.dropout(A)                               # (B,H,P,N,W*N)
+        s_neg = (-scores).masked_fill_(m, -1e4)            # -scores is a fresh alloc; safe to fill in-place
+        A = torch.softmax(scale * s_pos.reshape(B, H, P, N, W * N), dim=-1) \
+          - torch.softmax(scale * s_neg.reshape(B, H, P, N, W * N), dim=-1)
+        A = self.dropout(A)                                # (B,H,P,N,W*N)
 
-        # ─── Phase 2 — V_win from gathered values ─────────────────────
-        # Zero values at out-of-range slots (clamped to patch 0). Without this,
-        # the temporal GS propagates non-zero V[0] into valid slots and changes
-        # the math for early patches.
-        V_local = V_local.masked_fill(local_mask[None, None, :, :, None], 0)
-        V_win = V_local.reshape(B, H, P, W, N, D)         # (B,H,P,W,N,D)
-
-        # ─── Phase 3 — chunked vectorized projection + temporal GS ────
-        A_r = A.reshape(B, H, P, N, W, N)                 # (B,H,P,q_var,slot,k_var)
+        # ─── Phase 2 — chunked vectorized projection + temporal GS ────
+        A_r = A.reshape(B, H, P, N, W, N)                  # (B,H,P,q_var,slot,k_var)
         output_p = values.new_zeros(B, H, P, N, D)
 
         chunk = self._chunk_size(B, H, P, W, N, D)
-        eye_c = torch.eye(chunk, device=dev, dtype=values.dtype)
 
         for c_start in range(0, N, chunk):
             c_end = min(c_start + chunk, N)
@@ -194,13 +192,12 @@ class SignedAttention(nn.Module):
             inner = torch.einsum('bhpwjd,bhpwkd->bhpwjk', V_win, ref_c)
             alpha = inner / norms_c.unsqueeze(-2)          # (B,H,P,W,N,c)
 
-            # zero diagonal: alpha[..., c_start+k, k] = 0  for k in [0,c)
-            zero = values.new_ones(N, c)
-            if c == chunk:
-                zero[c_start:c_end] = zero[c_start:c_end] - eye_c
-            else:
-                zero[c_start:c_end] = zero[c_start:c_end] - torch.eye(c, device=dev, dtype=values.dtype)
-            alpha = alpha * zero
+            # Zero the diagonal alpha[..., c_start+k, k] in-place. Safe:
+            # alpha has no downstream consumer yet, and its producer (div)
+            # only saves inner/norms_c for backward — not alpha itself.
+            diag_rows = torch.arange(c_start, c_end, device=dev)
+            diag_cols = torch.arange(c, device=dev)
+            alpha[..., diag_rows, diag_cols] = 0
 
             alpha = alpha.transpose(-1, -2)                # (B,H,P,W,c,N)
 
@@ -216,9 +213,9 @@ class SignedAttention(nn.Module):
                 dot = (cur_s * ref_s).sum(-1, keepdim=True)
                 nrm = (ref_s * ref_s).sum(-1, keepdim=True).clamp(min=1e-8)
                 slices[s] = cur_s - (dot / nrm) * ref_s
-            V2 = torch.stack(slices, dim=3).to(values.dtype)  # (B,H,P,W,c,N,D)
+            # Stack with dim=4 lands W at position 4 directly — skips a permute.
+            V2 = torch.stack(slices, dim=4).to(values.dtype)  # (B,H,P,c,W,N,D)
 
-            V2 = V2.permute(0, 1, 2, 4, 3, 5, 6)           # (B,H,P,c,W,N,D)
             A_chunk = A_r[:, :, :, c_start:c_end]          # (B,H,P,c,W,N)
 
             out_chunk = torch.einsum('bhpcwn,bhpcwnd->bhpcd', A_chunk, V2)
