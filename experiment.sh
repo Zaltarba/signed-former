@@ -8,7 +8,7 @@ DESCRIPTION=$(git log -1 --pretty=%s)
 
 if python run.py \
   --is_training 1 \
-  --model_id PEMS08_custom \
+  --model_id PEMS08_custom_naive \
   --model CustomModel \
   --data PEMS \
   --root_path ./dataset/PEMS/ \
@@ -21,19 +21,19 @@ if python run.py \
   --dec_in 170 \
   --c_out 170 \
   --d_model 16 \
-  --n_heads 8 \
+  --n_heads 4 \
   --e_layers 3 \
   --d_ff 32 \
   --dropout 0.1 \
-  --train_epochs 30 \
+  --train_epochs 15 \
   --batch_size 32 \
   --learning_rate 0.005 \
   --patience 10 \
-  --keep_ratio 0.1 \
+  --keep_ratio 0.2 \
   --time_budget 6000 \
   --patch_len 24 \
   --stride 12 \
-  --n_stacks 1 \
+  --n_stacks 2 \
   --attention_window 3 \
   --kernel_size 12 \
   --use_norm 1 \

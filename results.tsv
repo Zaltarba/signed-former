@@ -46,3 +46,14 @@ a8cc75c	0.136418	3.57	ok	Patch ordering cleanup + tail patch to preserve last da
 4a73778	0.110545	0.74	ok	Add baseline iTransformer script for seq_len 96, horizon 12, keep_ratio 0.1
 4a73778	0.388974	0.43	ok	Add baseline iTransformer script for seq_len 96, horizon 12, keep_ratio 0.1
 17f4826	0.387796	28.63	ok	Implement projection-orthogonal signed attention
+e958ecb	0.141548	0.74	ok	Optimize SignedAttention: local attention + vectorized projection
+e958ecb	0.110072	3.34	ok	Optimize SignedAttention: local attention + vectorized projection
+e958ecb	0.394989	1.73	ok	Optimize SignedAttention: local attention + vectorized projection
+e958ecb	0.141548	0.74	ok	Optimize SignedAttention: local attention + vectorized projection
+e958ecb	0.091120	0.98	ok	Optimize SignedAttention: local attention + vectorized projection
+-e e958ecb	N/A	0.0	crash	Optimize SignedAttention: local attention + vectorized projection
+-e 93ed502	N/A	0.0	crash	Speed up SignedAttention: pad+unfold, in-place diagonal, stack dim
+-e 93ed502	N/A	0.0	crash	Speed up SignedAttention: pad+unfold, in-place diagonal, stack dim
+-e 93ed502	N/A	0.0	crash	Speed up SignedAttention: pad+unfold, in-place diagonal, stack dim
+-e 93ed502	N/A	0.0	crash	Speed up SignedAttention: pad+unfold, in-place diagonal, stack dim
+a472d24	0.096604	3.20	ok	Fix channel mismatch in vali/test when keep_ratio < 1.0
