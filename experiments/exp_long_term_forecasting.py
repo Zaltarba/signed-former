@@ -112,6 +112,14 @@ class Exp_Long_Term_Forecast(Exp_Basic):
                 batch_x_mark = batch_x_mark.float().to(self.device)
                 batch_y_mark = batch_y_mark.float().to(self.device)
 
+                keep_ratio = getattr(self.args, 'keep_ratio', 1.0)
+                if keep_ratio < 1.0:
+                    N = batch_x.shape[-1]
+                    n_keep = max(1, int(N * keep_ratio))
+                    idx = torch.randperm(N, device=batch_x.device)[:n_keep]
+                    batch_x = batch_x[:, :, idx]
+                    batch_y = batch_y[:, :, idx]
+
                 # decoder input
                 dec_inp = torch.zeros_like(batch_y[:, -self.args.pred_len:, :]).float()
                 dec_inp = torch.cat([batch_y[:, :self.args.label_len, :], dec_inp], dim=1).float().to(self.device)
@@ -200,7 +208,7 @@ class Exp_Long_Term_Forecast(Exp_Basic):
                 batch_x = batch_x.float().to(self.device)
                 batch_y = batch_y.float().to(self.device)
 
-                if 'PEMS' in self.args.data or 'Solar' in self.args.data:
+                if 'Solar' in self.args.data:
                     batch_x_mark = None
                     batch_y_mark = None
                 else:

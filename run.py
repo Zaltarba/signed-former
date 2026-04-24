@@ -101,11 +101,6 @@ if __name__ == '__main__':
     args = parser.parse_args()
     args.use_gpu = True if torch.cuda.is_available() and args.use_gpu else False
 
-    if args.keep_ratio < 1.0:
-        args.enc_in = max(1, int(args.enc_in * args.keep_ratio))
-        args.dec_in = max(1, int(args.dec_in * args.keep_ratio))
-        args.c_out = max(1, int(args.c_out * args.keep_ratio))
-
     if args.use_gpu and args.use_multi_gpu:
         args.devices = args.devices.replace(' ', '')
         device_ids = args.devices.split(',')
