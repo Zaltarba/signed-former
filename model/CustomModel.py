@@ -61,7 +61,7 @@ class TimeEmbedding(nn.Module):
 
     def __init__(self, seq_len: int, patch_len: int = 64,
                  stride: int = 32, d_model: int = 32, kernel_size: int = 12,
-                 dropout: float = 0.1, enc_in: int = 1):
+                 dropout: float = 0.1):
         super().__init__()
         self.patch_len = patch_len
         self.stride = stride
@@ -276,12 +276,12 @@ class StackedEncoder(nn.Module):
     def __init__(self, n_stacks: int, patch_len: int,
                  seq_len: int, pred_len: int, d_model: int = 32, stride: int = 32,
                  e_layers: int = 2, dropout: float = 0.1, kernel_size: int = 12,
-                 n_heads: int = 8, output_attention: bool = False, enc_in: int = 1,
+                 n_heads: int = 8, output_attention: bool = False,
                  attention_window: int = 10):
         super().__init__()
         self.embeddings = nn.ModuleList([
             TimeEmbedding(seq_len, patch_len // (2 ** i), stride // (2 ** i),
-                          d_model, kernel_size, dropout, enc_in)
+                          d_model, kernel_size, dropout)
             for i in range(n_stacks)
         ])
         self.stacks = nn.ModuleList([
@@ -316,41 +316,34 @@ class StackedEncoder(nn.Module):
 # ─────────────────────────────────────────────────────────────────────
 
 class FourierSeasonalModel(nn.Module):
-    """Learnable Fourier decomposition on temporal marks.
+    """Shared Fourier decomposition on temporal marks.
 
-    For each temporal feature (hour, weekday, day, month) and each variate,
-    learns Fourier coefficients to capture systematic periodic patterns.
-    The output is interpretable: each harmonic k on each temporal feature
-    corresponds to a specific periodicity (e.g. k=1 on hour-of-day = daily
-    cycle, k=2 = twice-daily cycle).
+    Learns one set of Fourier coefficients per temporal feature, producing
+    a single scalar seasonal component per timestep (shared across variates).
 
     Input:  x_mark (B, T, n_time_features)  — values in [-0.5, 0.5]
-    Output: seasonal component (B, T, n_variates)
+    Output: seasonal component (B, T)
     """
 
-    def __init__(self, n_time_features: int, n_variates: int,
-                 n_harmonics: int = 4):
+    def __init__(self, n_time_features: int, n_harmonics: int = 4):
         super().__init__()
         self.n_harmonics = n_harmonics
         self.n_time_features = n_time_features
-        self.n_variates = n_variates
 
         self.cos_coeffs = nn.Parameter(
-            torch.randn(n_time_features, n_variates, n_harmonics) * 0.02)
+            torch.randn(n_time_features, n_harmonics) * 0.02)
         self.sin_coeffs = nn.Parameter(
-            torch.randn(n_time_features, n_variates, n_harmonics) * 0.02)
-        self.bias = nn.Parameter(torch.zeros(n_variates))
+            torch.randn(n_time_features, n_harmonics) * 0.02)
+        self.bias = nn.Parameter(torch.zeros(1))
 
     def forward(self, x_mark: torch.Tensor) -> torch.Tensor:
-        """x_mark: (B, T, F) → (B, T, N_variates)"""
+        """x_mark: (B, T, F) → (B, T)"""
         k = torch.arange(1, self.n_harmonics + 1,
                          device=x_mark.device, dtype=x_mark.dtype)
-        phases = (x_mark + 0.5).unsqueeze(-1) * (2.0 * math.pi) * k
+        phases = (x_mark + 0.5).unsqueeze(-1) * (2.0 * math.pi) * k  # (B,T,F,H)
 
-        seasonal = (torch.einsum('fnh,btfh->btn', self.cos_coeffs,
-                                  torch.cos(phases))
-                    + torch.einsum('fnh,btfh->btn', self.sin_coeffs,
-                                   torch.sin(phases)))
+        seasonal = (torch.einsum('fh,btfh->bt', self.cos_coeffs, torch.cos(phases))
+                  + torch.einsum('fh,btfh->bt', self.sin_coeffs, torch.sin(phases)))
         return seasonal + self.bias
 
 
@@ -382,7 +375,6 @@ class Model(nn.Module):
             kernel_size=getattr(configs, 'kernel_size', 12),
             n_heads=configs.n_heads,
             output_attention=configs.output_attention,
-            enc_in=configs.enc_in,
             attention_window=configs.attention_window,
         )
 
@@ -394,7 +386,6 @@ class Model(nn.Module):
         n_harmonics = getattr(configs, 'n_harmonics', 4)
         self.seasonal = FourierSeasonalModel(
             n_time_features=n_time_features,
-            n_variates=configs.enc_in,
             n_harmonics=n_harmonics,
         )
         self.flag = 0
@@ -410,17 +401,17 @@ class Model(nn.Module):
             stdev = (x_enc.var(dim=1, keepdim=True, correction=0) + 1e-5).sqrt()
             x_enc = x_enc / stdev
         if has_marks:
-            seasonal_enc = self.seasonal(x_mark_enc)
-            seasonal_dec = self.seasonal(x_mark_dec[:, -self.pred_len:, :])
+            seasonal_enc = self.seasonal(x_mark_enc).unsqueeze(-1)
+            seasonal_dec = self.seasonal(x_mark_dec[:, -self.pred_len:, :]).unsqueeze(-1)
             x_enc = x_enc - seasonal_enc
 
         if self.flag > 1200:
             if self.flag == 1201:
                 print('Start full model')
             #x_enc = F.pad(x_enc, (0, 0, 0, self.pred_len))
-            
+
             dec_out, attns = self.encoder(x_enc)
-            
+
             if has_marks:
                 dec_out = dec_out + seasonal_dec
         else:
