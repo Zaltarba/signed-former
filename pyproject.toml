@@ -27,6 +27,7 @@ dependencies = [
     "reformer-pytorch>=1.4.4",
     "setuptools>=75,<82",
     "dysts>=0.96",
+    "triton>=3.1.0",
 ]
 
 [tool.uv]

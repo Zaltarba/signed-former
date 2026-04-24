@@ -17,6 +17,7 @@ python -u run.py \
   --dec_in 307 \
   --c_out 307 \
   --des 'Exp' \
+  --train_epochs 1 \
   --d_model 1024 \
   --d_ff 1024 \
   --learning_rate 0.0005 \
