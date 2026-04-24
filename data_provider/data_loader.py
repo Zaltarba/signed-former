@@ -53,9 +53,6 @@ class Dataset_ETT_hour(Dataset):
         if self.features == 'M' or self.features == 'MS':
             cols_data = df_raw.columns[1:]
             df_data = df_raw[cols_data]
-            if self.keep_ratio < 1.0:
-                n_keep = max(1, int(df_data.shape[1] * self.keep_ratio))
-                df_data = df_data.iloc[:, :n_keep]
         elif self.features == 'S':
             df_data = df_raw[[self.target]]
 
@@ -145,9 +142,6 @@ class Dataset_ETT_minute(Dataset):
         if self.features == 'M' or self.features == 'MS':
             cols_data = df_raw.columns[1:]
             df_data = df_raw[cols_data]
-            if self.keep_ratio < 1.0:
-                n_keep = max(1, int(df_data.shape[1] * self.keep_ratio))
-                df_data = df_data.iloc[:, :n_keep]
         elif self.features == 'S':
             df_data = df_raw[[self.target]]
 
@@ -249,9 +243,6 @@ class Dataset_Custom(Dataset):
         if self.features == 'M' or self.features == 'MS':
             cols_data = df_raw.columns[1:]
             df_data = df_raw[cols_data]
-            if self.keep_ratio < 1.0:
-                n_keep = max(1, int(df_data.shape[1] * self.keep_ratio))
-                df_data = df_data.iloc[:, :n_keep]
         elif self.features == 'S':
             df_data = df_raw[[self.target]]
 
@@ -328,10 +319,6 @@ class Dataset_PEMS(Dataset):
         data_file = os.path.join(self.root_path, self.data_path)
         data = np.load(data_file, allow_pickle=True)
         data = data['data'][:, :, 0]
-
-        if self.keep_ratio < 1.0:
-            n_keep = max(1, int(data.shape[1] * self.keep_ratio))
-            data = data[:, :n_keep]
 
         train_ratio = 0.6
         valid_ratio = 0.2
@@ -422,9 +409,6 @@ class Dataset_Solar(Dataset):
                 data_line = np.stack([float(i) for i in line])
                 df_raw.append(data_line)
         df_raw = np.stack(df_raw, 0)
-        if self.keep_ratio < 1.0:
-            n_keep = max(1, int(df_raw.shape[1] * self.keep_ratio))
-            df_raw = df_raw[:, :n_keep]
         df_raw = pd.DataFrame(df_raw)
 
         num_train = int(len(df_raw) * 0.7)
